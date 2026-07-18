@@ -1,4 +1,20 @@
+use crate::config::CELL_SIZE;
 use std::sync::Arc;
+
+struct GridParams {
+    active_cols: u32,
+    active_rows: u32,
+    cell_size: u32,
+    padding: u32,
+}
+
+struct PhysicsParams {
+    u: Vec<Vec<f32>>,
+    v: Vec<Vec<f32>>,
+    bx: Vec<Vec<f32>>,
+    by: Vec<Vec<f32>>,
+    p: Vec<Vec<f32>>,
+}
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -7,6 +23,8 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Arc<winit::window::Window>,
+    grid_params: GridParams,
+    physics_params: PhysicsParams,
 }
 
 impl State {
@@ -56,6 +74,23 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let active_cols = size.width / CELL_SIZE;
+        let active_rows = size.height / CELL_SIZE;
+        let grid_params = GridParams {
+            active_cols,
+            active_rows,
+            cell_size: CELL_SIZE,
+            padding: 0,
+        };
+
+        let physics_params = PhysicsParams {
+            u: vec![vec![0.0; (active_cols + 1) as usize]; active_rows as usize],
+            v: vec![vec![0.0; active_cols as usize]; (active_rows + 1) as usize],
+            bx: vec![vec![0.0; (active_cols + 1) as usize]; active_rows as usize],
+            by: vec![vec![0.0; active_cols as usize]; (active_rows + 1) as usize],
+            p: vec![vec![0.0; active_cols as usize]; active_rows as usize],
+        };
+
         Self {
             surface,
             device,
@@ -63,6 +98,8 @@ impl State {
             config,
             size,
             window,
+            grid_params,
+            physics_params,
         }
     }
 
