@@ -1,6 +1,7 @@
 mod pipeline;
 mod state;
 
+use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     event::*,
@@ -8,17 +9,23 @@ use winit::{
     window::{Window, WindowId},
 };
 
-struct App<'a> {
-    window: Option<Window>,
-    state: Option<state::State<'a>>,
+struct App {
+    window: Option<Arc<Window>>,
+    state: Option<state::State>,
 }
 
-impl ApplicationHandler for App<'_> {
+impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = event_loop
-            .create_window(Window::default_attributes())
-            .expect("Failed to create window");
-        self.window = Some(window);
+        if self.window.is_none() {
+            let window = Arc::new(
+                event_loop
+                    .create_window(Window::default_attributes())
+                    .unwrap(),
+            );
+            self.window = Some(window.clone());
+
+            self.state = Some(pollster::block_on(state::State::new(window)));
+        }
     }
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
@@ -45,6 +52,14 @@ impl ApplicationHandler for App<'_> {
                             state.resize(new_size);
                         }
                     }
+                    WindowEvent::RedrawRequested => {
+                        if let Some(state) = &mut self.state {
+                            match state.render() {
+                                Ok(_) => {}
+                                Err(e) => eprintln!("{:?}", e),
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -59,9 +74,5 @@ fn main() {
         state: None,
     };
 
-    app.state = Some(pollster::block_on(state::State::new(
-        app.window.as_ref().unwrap(),
-    )));
-
-    event_loop.run_app(&mut app);
+    event_loop.run_app(&mut app).unwrap();
 }
