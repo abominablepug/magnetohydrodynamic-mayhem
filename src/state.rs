@@ -1,19 +1,40 @@
 use crate::config::CELL_SIZE;
+use crate::pipeline::create_compute_pipeline;
 use std::sync::Arc;
+use wgpu::util::DeviceExt;
 
-struct GridParams {
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct SimParams {
+    dt: f32,
+    density: f32,
+    viscosity: f32,
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
-    padding: u32,
+    _padding: [u32; 2],
 }
 
-struct PhysicsParams {
-    u: Vec<Vec<f32>>,
-    v: Vec<Vec<f32>>,
-    bx: Vec<Vec<f32>>,
-    by: Vec<Vec<f32>>,
-    p: Vec<Vec<f32>>,
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Cell {
+    u_left: f32,
+    u_right: f32,
+    v_bottom: f32,
+    v_top: f32,
+    bx_left: f32,
+    bx_right: f32,
+    by_bottom: f32,
+    by_top: f32,
+    p: f32,
+    _padding: [f32; 3],
+}
+
+struct ComputeResources {
+    compute_pipeline: wgpu::ComputePipeline,
+    sim_params_buffer: wgpu::Buffer,
+    grid_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
 }
 
 pub struct State {
@@ -23,8 +44,7 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Arc<winit::window::Window>,
-    grid_params: GridParams,
-    physics_params: PhysicsParams,
+    compute: ComputeResources,
 }
 
 impl State {
@@ -74,21 +94,73 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let dt = 0.01;
+        let density = 1.0;
+        let viscosity = 0.1;
+
         let active_cols = size.width / CELL_SIZE;
         let active_rows = size.height / CELL_SIZE;
-        let grid_params = GridParams {
+        let sim_params = SimParams {
+            dt,
+            density,
+            viscosity,
             active_cols,
             active_rows,
             cell_size: CELL_SIZE,
-            padding: 0,
+            _padding: [0, 0],
         };
 
-        let physics_params = PhysicsParams {
-            u: vec![vec![0.0; (active_cols + 1) as usize]; active_rows as usize],
-            v: vec![vec![0.0; active_cols as usize]; (active_rows + 1) as usize],
-            bx: vec![vec![0.0; (active_cols + 1) as usize]; active_rows as usize],
-            by: vec![vec![0.0; active_cols as usize]; (active_rows + 1) as usize],
-            p: vec![vec![0.0; active_cols as usize]; active_rows as usize],
+        let grid = vec![
+            Cell {
+                u_left: 0.0,
+                u_right: 0.0,
+                v_bottom: 0.0,
+                v_top: 0.0,
+                bx_left: 0.0,
+                bx_right: 0.0,
+                by_bottom: 0.0,
+                by_top: 0.0,
+                p: 1.0,
+                _padding: [0.0; 3],
+            };
+            (active_cols * active_rows) as usize
+        ];
+
+        let compute_pipeline =
+            create_compute_pipeline(&device, Some("Compute Pipeline"), Some("cs_main"));
+
+        let sim_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sim Params Buffer"),
+            contents: bytemuck::cast_slice(&[sim_params]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let grid_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Grid Buffer"),
+            contents: bytemuck::cast_slice(&grid),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Compute Bind Group"),
+            layout: &compute_pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: sim_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: grid_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let compute = ComputeResources {
+            compute_pipeline,
+            sim_params_buffer,
+            grid_buffer,
+            bind_group,
         };
 
         Self {
@@ -98,8 +170,7 @@ impl State {
             config,
             size,
             window,
-            grid_params,
-            physics_params,
+            compute,
         }
     }
 

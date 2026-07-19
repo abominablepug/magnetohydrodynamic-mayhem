@@ -45,3 +45,23 @@ pub fn create_render_pipeline(
         multiview_mask: None,
     })
 }
+
+pub fn create_compute_pipeline(
+    device: &wgpu::Device,
+    label: Option<&str>,
+    entry_point: Option<&str>,
+) -> wgpu::ComputePipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Compute Shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("../res/compute.wgsl").into()),
+    });
+
+    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label,
+        layout: None,
+        module: &shader,
+        entry_point,
+        compilation_options: Default::default(),
+        cache: None,
+    })
+}
