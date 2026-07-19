@@ -18,14 +18,10 @@ struct SimParams {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Cell {
-    u_left: f32,
-    u_right: f32,
-    v_bottom: f32,
-    v_top: f32,
-    bx_left: f32,
-    bx_right: f32,
-    by_bottom: f32,
-    by_top: f32,
+    u: f32,
+    v: f32,
+    bx: f32,
+    by: f32,
     p: f32,
     _padding: [f32; 3],
 }
@@ -112,14 +108,10 @@ impl State {
 
         let grid = vec![
             Cell {
-                u_left: 0.0,
-                u_right: 0.0,
-                v_bottom: 0.0,
-                v_top: 0.0,
-                bx_left: 0.0,
-                bx_right: 0.0,
-                by_bottom: 0.0,
-                by_top: 0.0,
+                u: 0.0,
+                v: 0.0,
+                bx: 0.0,
+                by: 0.0,
                 p: 1.0,
                 _padding: [0.0; 3],
             };
@@ -135,7 +127,13 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let grid_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let grid_in_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Grid Buffer"),
+            contents: bytemuck::cast_slice(&grid),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        });
+
+        let grid_out_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Grid Buffer"),
             contents: bytemuck::cast_slice(&grid),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
@@ -151,6 +149,10 @@ impl State {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
+                    resource: grid_uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
                     resource: grid_buffer.as_entire_binding(),
                 },
             ],
