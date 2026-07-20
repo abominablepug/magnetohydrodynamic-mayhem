@@ -163,3 +163,34 @@ fn jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     grid_out[index] = cell;
 }
+
+@compute
+@workgroup_size(8, 8, 1)
+fn pressure_gradient_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let x = i32(col);
+    let y = i32(row);
+    let delta = f32(sim_params.cell_size);
+    let fd = sim_params.fluid_density;
+
+    let index = get_cell_index(y, x);
+    var cell = grid_in[index];
+    var cell_left = grid_in[get_cell_index(y, x - 1)];
+    var cell_down = grid_in[get_cell_index(y - 1, x)];
+
+    let gradient_p = vec2<f32>(
+        (cell.p - cell_left.p) / (delta * fd),
+        (cell.p - cell_down.p) / (delta * fd)
+    ) * sim_params.dt;
+
+    cell.u -= gradient_p.x;
+    cell.v -= gradient_p.y;
+
+    grid_out[index] = cell;
+}
