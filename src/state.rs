@@ -1,4 +1,4 @@
-use crate::config::CELL_SIZE;
+use crate::config::{CELL_SIZE, DENSITY, DT, FLUID_DENSITY, VISCOSITY};
 use crate::pipeline::create_compute_pipeline;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -12,7 +12,8 @@ struct SimParams {
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
-    _padding: [u32; 2],
+    fluid_density: f32,
+    _padding: u32,
 }
 
 #[repr(C)]
@@ -23,7 +24,8 @@ struct Cell {
     bx: f32,
     by: f32,
     p: f32,
-    _padding: [f32; 3],
+    divergence: f32,
+    _padding: [f32; 2],
 }
 
 struct ComputeResources {
@@ -90,20 +92,17 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let dt = 0.01;
-        let density = 1.0;
-        let viscosity = 0.1;
-
         let active_cols = size.width / CELL_SIZE;
         let active_rows = size.height / CELL_SIZE;
         let sim_params = SimParams {
-            dt,
-            density,
-            viscosity,
+            dt: DT,
+            density: DENSITY,
+            viscosity: VISCOSITY,
             active_cols,
             active_rows,
             cell_size: CELL_SIZE,
-            _padding: [0, 0],
+            fluid_density: FLUID_DENSITY,
+            _padding: 0,
         };
 
         let grid = vec![
@@ -113,7 +112,8 @@ impl State {
                 bx: 0.0,
                 by: 0.0,
                 p: 1.0,
-                _padding: [0.0; 3],
+                divergence: 0.0,
+                _padding: [0.0; 2],
             };
             (active_cols * active_rows) as usize
         ];
@@ -149,11 +149,11 @@ impl State {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: grid_uniform_buffer.as_entire_binding(),
+                    resource: grid_in_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: grid_buffer.as_entire_binding(),
+                    resource: grid_out_buffer.as_entire_binding(),
                 },
             ],
         });
