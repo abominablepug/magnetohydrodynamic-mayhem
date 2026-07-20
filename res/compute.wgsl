@@ -123,11 +123,18 @@ fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(y, x);
     var cell = grid_in[index];
-    var cell_right = grid_in[get_cell_index(y, x + 1)];
-    var cell_up = grid_in[get_cell_index(y + 1, x)];
+    var u_right = grid_in[get_cell_index(y, x + 1)].u;
+    var v_up = grid_in[get_cell_index(y + 1, x)].v;
 
-    let div_u = (cell_right.u - cell.u) / delta;
-    let div_v = (cell_up.v - cell.v) / delta;
+    if x == i32(sim_params.active_cols - 1) {
+        u_right = 0.0;
+    }
+    if y == i32(sim_params.active_rows - 1) {
+        v_up = 0.0;
+    }
+
+    let div_u = (u_right - cell.u) / delta;
+    let div_v = (v_up - cell.v) / delta;
 
     cell.divergence = div_u + div_v;
 
@@ -150,14 +157,14 @@ fn jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(y, x);
     var cell = grid_in[index];
-    var cell_left = grid_in[get_cell_index(y, x - 1)];
-    var cell_right = grid_in[get_cell_index(y, x + 1)];
-    var cell_down = grid_in[get_cell_index(y - 1, x)];
-    var cell_up = grid_in[get_cell_index(y + 1, x)];
+    var p_left = grid_in[get_cell_index(y, x - 1)].p;
+    var p_right = grid_in[get_cell_index(y, x + 1)].p;
+    var p_down = grid_in[get_cell_index(y - 1, x)].p;
+    var p_up = grid_in[get_cell_index(y + 1, x)].p;
 
     let b = (sim_params.fluid_density * delta * delta * cell.divergence) / sim_params.dt;
 
-    let p_new = (cell_left.p + cell_right.p + cell_down.p + cell_up.p - b) / 4.0;
+    let p_new = (p_left + p_right + p_down + p_up - b) / 4.0;
 
     cell.p = p_new;
 
@@ -181,16 +188,23 @@ fn pressure_gradient_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(y, x);
     var cell = grid_in[index];
-    var cell_left = grid_in[get_cell_index(y, x - 1)];
-    var cell_down = grid_in[get_cell_index(y - 1, x)];
+    var p_left = grid_in[get_cell_index(y, x - 1)].p;
+    var p_down = grid_in[get_cell_index(y - 1, x)].p;
 
     let gradient_p = vec2<f32>(
-        (cell.p - cell_left.p) / (delta * fd),
-        (cell.p - cell_down.p) / (delta * fd)
+        (cell.p - p_left) / (delta * fd),
+        (cell.p - p_down) / (delta * fd)
     ) * sim_params.dt;
 
     cell.u -= gradient_p.x;
     cell.v -= gradient_p.y;
+
+    if x == 0 {
+        cell.u = 0.0;
+    }
+    if y == 0 {
+        cell.v = 0.0;
+    }
 
     grid_out[index] = cell;
 }
