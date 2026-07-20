@@ -129,26 +129,28 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(i32(row), i32(col));
     var cell = grid_in[index];
+    let delta = f32(sim_params.cell_size);
+    let dt = sim_params.dt;
 
-    let u_x = f32(col) * f32(sim_params.cell_size);
-    let u_y = (f32(row) + 0.5) * f32(sim_params.cell_size);
+    let u_x = f32(col) * delta;
+    let u_y = (f32(row) + 0.5) * delta;
 
-    let local_u = cell.u;
-    let local_v = bilinear_interpolation_v(u_x, u_y);
+    var local_u = cell.u;
+    var local_v = bilinear_interpolation_v(u_x, u_y);
 
-    let u_old_x = u_x - local_u * sim_params.dt;
-    let u_old_y = u_y - local_v * sim_params.dt;
+    let u_old_x = u_x - local_u * dt;
+    let u_old_y = u_y - local_v * dt;
 
     cell.u = bilinear_interpolation_u(u_old_x, u_old_y);
 
-    let v_x = (f32(col) + 0.5) * f32(sim_params.cell_size);
-    let v_y = f32(row) * f32(sim_params.cell_size);
+    let v_x = (f32(col) + 0.5) * delta;
+    let v_y = f32(row) * delta;
 
-    let local_u_v = bilinear_interpolation_u(v_x, v_y);
-    let local_v_v = cell.v;
+    local_u = bilinear_interpolation_u(v_x, v_y);
+    local_v = cell.v;
 
-    let v_old_x = v_x - local_u_v * sim_params.dt;
-    let v_old_y = v_y - local_v_v * sim_params.dt;
+    let v_old_x = v_x - local_u * dt;
+    let v_old_y = v_y - local_v * dt;
 
     cell.v = bilinear_interpolation_v(v_old_x, v_old_y);
 
@@ -253,6 +255,46 @@ fn pressure_gradient_step(@builtin(global_invocation_id) id: vec3<u32>) {
     if y == 0 {
         cell.v = 0.0;
     }
+
+    grid_out[index] = cell;
+}
+
+@compute
+@workgroup_size(8, 8, 1)
+fn magnetic_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let index = get_cell_index(i32(row), i32(col));
+    var cell = grid_in[index];
+    let delta = f32(sim_params.cell_size);
+    let dt = sim_params.dt;
+
+    let bx_x = f32(col) * delta;
+    let bx_y = (f32(row) + 0.5) * delta;
+
+    var local_u = cell.u;
+    var local_v = bilinear_interpolation_v(bx_x, bx_y);
+
+    let bx_old_x = bx_x - local_u * dt;
+    let bx_old_y = bx_y - local_v * dt;
+
+    cell.bx = bilinear_interpolation_bx(bx_old_x, bx_old_y);
+
+    let by_x = (f32(col) + 0.5) * delta;
+    let by_y = f32(row) * delta;
+
+    local_u = bilinear_interpolation_u(by_x, by_y);
+    local_v = cell.v;
+
+    let by_old_x = by_x - local_u * dt;
+    let by_old_y = by_y - local_v * dt;
+
+    cell.by = bilinear_interpolation_by(by_old_x, by_old_y);
 
     grid_out[index] = cell;
 }
