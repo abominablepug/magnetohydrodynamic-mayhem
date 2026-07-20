@@ -28,9 +28,17 @@ fn get_cell_index(row: i32, col: i32) -> u32 {
     return u32(r) * sim_params.active_cols + u32(c);
 }
 
-fn bilinear_interpolation_u(x: f32, y: f32) -> f32 {
-    let grid_x = x / f32(sim_params.cell_size);
-    let grid_y = (y / f32(sim_params.cell_size)) - 0.5;
+fn bilinear_prep(x: f32, y: f32, is_x: bool) -> vec4<f32> {
+    var grid_x: f32;
+    var grid_y: f32;
+
+    if is_x {
+        var grid_x = (x / f32(sim_params.cell_size)) - 0.5;
+        var grid_y = y / f32(sim_params.cell_size);
+    } else {
+        var grid_x = x / f32(sim_params.cell_size);
+        var grid_y = (y / f32(sim_params.cell_size)) - 0.5;
+    }
 
     let col = i32(floor(grid_x));
     let row = i32(floor(grid_y));
@@ -38,25 +46,32 @@ fn bilinear_interpolation_u(x: f32, y: f32) -> f32 {
     let tx = fract(grid_x);
     let ty = fract(grid_y);
 
-    let v00 = grid_in[get_cell_index(row, col)].u;
-    let v10 = grid_in[get_cell_index(row, col + 1)].u;
-    let v01 = grid_in[get_cell_index(row + 1, col)].u;
-    let v11 = grid_in[get_cell_index(row + 1, col + 1)].u;
+    return vec4<f32>(f32(row), f32(col), tx, ty);
+}
 
-    let mix_bottom = mix(v00, v10, tx);
-    let mix_top = mix(v01, v11, tx);
+fn bilinear_interpolation_u(x: f32, y: f32) -> f32 {
+    let prep = bilinear_prep(x, y, true);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
+
+    let u00 = grid_in[get_cell_index(row, col)].u;
+    let u10 = grid_in[get_cell_index(row, col + 1)].u;
+    let u01 = grid_in[get_cell_index(row + 1, col)].u;
+    let u11 = grid_in[get_cell_index(row + 1, col + 1)].u;
+
+    let mix_bottom = mix(u00, u10, tx);
+    let mix_top = mix(u01, u11, tx);
     return mix(mix_bottom, mix_top, ty);
 }
 
 fn bilinear_interpolation_v(x: f32, y: f32) -> f32 {
-    let grid_x = (x / f32(sim_params.cell_size)) - 0.5;
-    let grid_y = y / f32(sim_params.cell_size);
-
-    let col = i32(floor(grid_x));
-    let row = i32(floor(grid_y));
-
-    let tx = fract(grid_x);
-    let ty = fract(grid_y);
+    let prep = bilinear_prep(x, y, false);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
 
     let v00 = grid_in[get_cell_index(row, col)].v;
     let v10 = grid_in[get_cell_index(row, col + 1)].v;
@@ -65,6 +80,40 @@ fn bilinear_interpolation_v(x: f32, y: f32) -> f32 {
 
     let mix_bottom = mix(v00, v10, tx);
     let mix_top = mix(v01, v11, tx);
+    return mix(mix_bottom, mix_top, ty);
+}
+
+fn bilinear_interpolation_bx(x: f32, y: f32) -> f32 {
+    let prep = bilinear_prep(x, y, true);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
+
+    let bx00 = grid_in[get_cell_index(row, col)].bx;
+    let bx10 = grid_in[get_cell_index(row, col + 1)].bx;
+    let bx01 = grid_in[get_cell_index(row + 1, col)].bx;
+    let bx11 = grid_in[get_cell_index(row + 1, col + 1)].bx;
+
+    let mix_bottom = mix(bx00, bx10, tx);
+    let mix_top = mix(bx01, bx11, tx);
+    return mix(mix_bottom, mix_top, ty);
+}
+
+fn bilinear_interpolation_by(x: f32, y: f32) -> f32 {
+    let prep = bilinear_prep(x, y, false);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
+
+    let by00 = grid_in[get_cell_index(row, col)].by;
+    let by10 = grid_in[get_cell_index(row, col + 1)].by;
+    let by01 = grid_in[get_cell_index(row + 1, col)].by;
+    let by11 = grid_in[get_cell_index(row + 1, col + 1)].by;
+
+    let mix_bottom = mix(by00, by10, tx);
+    let mix_top = mix(by01, by11, tx);
     return mix(mix_bottom, mix_top, ty);
 }
 
