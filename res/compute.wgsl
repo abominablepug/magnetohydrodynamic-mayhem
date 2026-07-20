@@ -5,7 +5,8 @@ struct SimParams {
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
-    _padding: vec2<u32>,
+    fluid_density: f32,
+    _padding: u32,
 }
 
 struct Cell {
@@ -14,7 +15,8 @@ struct Cell {
     bx: f32,
     by: f32,
     p: f32,
-    _padding: vec3<f32>,
+    divergence: f32,
+    _padding: vec2<f32>,
 }
 
 @group(0) @binding(0) var<uniform> sim_params: SimParams;
@@ -77,7 +79,7 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
 
-    let index = get_cell_index(row, col);
+    let index = get_cell_index(i32(row), i32(col));
     var cell = grid_in[index];
 
     let u_x = f32(col) * f32(sim_params.cell_size);
@@ -105,3 +107,27 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
     grid_out[index] = cell;
 }
 
+@compute
+@workgroup_size(8, 8, 1)
+fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let x = i32(col);
+    let y = i32(row);
+    let delta = f32(sim_params.cell_size);
+
+    let index = get_cell_index(y, x);
+    var cell = grid_in[index];
+    var cell_right = grid_in[get_cell_index(y, x + 1)];
+    var cell_up = grid_in[get_cell_index(y + 1, x)];
+
+    let div_u = (cell_right.u - cell.u) / delta;
+    let div_v = (cell_up.v - cell.v) / delta;
+
+    cell.divergence = div_u + div_v;
+}
