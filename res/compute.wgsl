@@ -1,12 +1,11 @@
 struct SimParams {
     dt: f32,
-    density: f32,
+    fluid_density: f32,
     viscosity: f32,
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
-    fluid_density: f32,
-    _padding: u32,
+    _padding: vec2<u32>,
 }
 
 struct Cell {

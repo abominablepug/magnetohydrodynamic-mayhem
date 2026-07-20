@@ -7,13 +7,12 @@ use wgpu::util::DeviceExt;
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct SimParams {
     dt: f32,
-    density: f32,
+    fluid_density: f32,
     viscosity: f32,
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
-    fluid_density: f32,
-    _padding: u32,
+    _padding: [u32; 2],
 }
 
 #[repr(C)]
@@ -97,13 +96,12 @@ impl State {
         let active_rows = size.height / CELL_SIZE;
         let sim_params = SimParams {
             dt: DT,
-            density: DENSITY,
+            fluid_density: FLUID_DENSITY,
             viscosity: VISCOSITY,
             active_cols,
             active_rows,
             cell_size: CELL_SIZE,
-            fluid_density: FLUID_DENSITY,
-            _padding: 0,
+            _padding: [0; 2],
         };
 
         let grid = vec![
