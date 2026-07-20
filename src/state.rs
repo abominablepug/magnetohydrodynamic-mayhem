@@ -31,7 +31,8 @@ struct Cell {
 struct ComputeResources {
     compute_pipeline: wgpu::ComputePipeline,
     sim_params_buffer: wgpu::Buffer,
-    grid_buffer: wgpu::Buffer,
+    grid_in_buffer: wgpu::Buffer,
+    grid_out_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
 }
 
@@ -161,7 +162,8 @@ impl State {
         let compute = ComputeResources {
             compute_pipeline,
             sim_params_buffer,
-            grid_buffer,
+            grid_in_buffer,
+            grid_out_buffer,
             bind_group,
         };
 

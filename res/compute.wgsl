@@ -133,3 +133,33 @@ fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     grid_out[index] = cell;
 }
+
+@compute
+@workgroup_size(8, 8, 1)
+fn jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let x = i32(col);
+    let y = i32(row);
+    let delta = f32(sim_params.cell_size);
+
+    let index = get_cell_index(y, x);
+    var cell = grid_in[index];
+    var cell_left = grid_in[get_cell_index(y, x - 1)];
+    var cell_right = grid_in[get_cell_index(y, x + 1)];
+    var cell_down = grid_in[get_cell_index(y - 1, x)];
+    var cell_up = grid_in[get_cell_index(y + 1, x)];
+
+    let b = (sim_params.fluid_density * delta * delta * cell.divergence) / sim_params.dt;
+
+    let p_new = (cell_left.p + cell_right.p + cell_down.p + cell_up.p - b) / 4.0;
+
+    cell.p = p_new;
+
+    grid_out[index] = cell;
+}
