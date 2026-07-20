@@ -130,4 +130,6 @@ fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let div_v = (cell_up.v - cell.v) / delta;
 
     cell.divergence = div_u + div_v;
+
+    grid_out[index] = cell;
 }
