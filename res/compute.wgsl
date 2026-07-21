@@ -418,3 +418,33 @@ fn compute_magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>
 
     grid_out[index] = cell;
 }
+
+@compute
+@workgroup_size(8, 8, 1)
+fn magnetic_jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let x = i32(col);
+    let y = i32(row);
+    let delta = f32(sim_params.cell_size);
+
+    let index = get_cell_index(y, x);
+    var cell = grid_in[index];
+    var phi_left = grid_in[get_cell_index(y, x - 1)].phi;
+    var phi_right = grid_in[get_cell_index(y, x + 1)].phi;
+    var phi_down = grid_in[get_cell_index(y - 1, x)].phi;
+    var phi_up = grid_in[get_cell_index(y + 1, x)].phi;
+
+    let b = delta * delta * cell.magnetic_divergence;
+
+    let phi_new = (phi_left + phi_right + phi_down + phi_up - b) / 4.0;
+
+    cell.phi = phi_new;
+
+    grid_out[index] = cell;
+}
