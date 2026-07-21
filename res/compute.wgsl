@@ -261,7 +261,7 @@ fn pressure_gradient_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute
 @workgroup_size(8, 8, 1)
-fn magnetic_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn magnetic_induction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
@@ -271,11 +271,25 @@ fn magnetic_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(i32(row), i32(col));
     var cell = grid_in[index];
+    let cell_right = grid_in[get_cell_index(i32(row), i32(col + 1))];
+    let cell_up = grid_in[get_cell_index(i32(row + 1), i32(col))];
     let delta = f32(sim_params.cell_size);
     let dt = sim_params.dt;
 
+    // stretching term x-component
+
     let bx_x = f32(col) * delta;
     let bx_y = (f32(row) + 0.5) * delta;
+
+    var local_bx = cell.bx;
+    var local_by = bilinear_interpolation_by(bx_x, bx_y);
+
+    let du_dx = (cell_right.u - cell.u) / delta;
+    let du_dy = (cell_up.u - cell.u) / delta;
+
+    let b_stretch_x = (local_bx * du_dx + local_by * du_dy) * dt;
+
+    // advection term x-component
 
     var local_u = cell.u;
     var local_v = bilinear_interpolation_v(bx_x, bx_y);
@@ -283,10 +297,22 @@ fn magnetic_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let bx_old_x = bx_x - local_u * dt;
     let bx_old_y = bx_y - local_v * dt;
 
-    cell.bx = bilinear_interpolation_bx(bx_old_x, bx_old_y);
+    cell.bx = bilinear_interpolation_bx(bx_old_x, bx_old_y) + b_stretch_x;
+
+    // stretching term y-component
 
     let by_x = (f32(col) + 0.5) * delta;
     let by_y = f32(row) * delta;
+
+    local_bx = bilinear_interpolation_bx(by_x, by_y);
+    local_by = cell.by;
+
+    let dv_dx = (cell_right.v - cell.v) / delta;
+    let dv_dy = (cell_up.v - cell.v) / delta;
+
+    let b_stretch_y = (local_bx * dv_dx + local_by * dv_dy) * dt;
+
+    // advection term y-component
 
     local_u = bilinear_interpolation_u(by_x, by_y);
     local_v = cell.v;
@@ -294,7 +320,7 @@ fn magnetic_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let by_old_x = by_x - local_u * dt;
     let by_old_y = by_y - local_v * dt;
 
-    cell.by = bilinear_interpolation_by(by_old_x, by_old_y);
+    cell.by = bilinear_interpolation_by(by_old_x, by_old_y) + b_stretch_y;
 
     grid_out[index] = cell;
 }
