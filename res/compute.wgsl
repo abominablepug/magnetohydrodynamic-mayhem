@@ -401,8 +401,8 @@ fn compute_magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>
 
     let index = get_cell_index(y, x);
     var cell = grid_in[index];
-    var bx_right = grid_in[get_cell_index(y, x + 1)].u;
-    var by_up = grid_in[get_cell_index(y + 1, x)].v;
+    var bx_right = grid_in[get_cell_index(y, x + 1)].bx;
+    var by_up = grid_in[get_cell_index(y + 1, x)].by;
 
     if x == i32(sim_params.active_cols - 1) {
         bx_right = 0.0;
@@ -471,7 +471,7 @@ fn electric_potential_gradient_step(@builtin(global_invocation_id) id: vec3<u32>
     let gradient_phi = vec2<f32>(
         (cell.phi - phi_left) / delta,
         (cell.phi - phi_down) / delta
-    ) * sim_params.dt;
+    );
 
     cell.bx -= gradient_phi.x;
     cell.by -= gradient_phi.y;
