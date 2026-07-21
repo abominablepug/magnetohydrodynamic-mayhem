@@ -23,8 +23,9 @@ struct Cell {
     bx: f32,
     by: f32,
     p: f32,
-    divergence: f32,
-    _padding: [f32; 2],
+    fluid_divergence: f32,
+    phi: f32,
+    magnetic_divergence: f32,
 }
 
 struct ComputeResources {
@@ -111,8 +112,9 @@ impl State {
                 bx: 0.0,
                 by: 0.0,
                 p: 1.0,
-                divergence: 0.0,
-                _padding: [0.0; 2],
+                fluid_divergence: 0.0,
+                phi: 0.0,
+                magnetic_divergence: 0.0,
             };
             (active_cols * active_rows) as usize
         ];

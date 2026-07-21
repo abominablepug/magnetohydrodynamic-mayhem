@@ -14,8 +14,9 @@ struct Cell {
     bx: f32,
     by: f32,
     p: f32,
-    divergence: f32,
-    _padding: vec2<f32>,
+    fluid_divergence: f32,
+    phi: f32,
+    magnetic_divergence: f32,
 }
 
 @group(0) @binding(0) var<uniform> sim_params: SimParams;
@@ -186,7 +187,7 @@ fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let div_u = (u_right - cell.u) / delta;
     let div_v = (v_up - cell.v) / delta;
 
-    cell.divergence = div_u + div_v;
+    cell.fluid_divergence = div_u + div_v;
 
     grid_out[index] = cell;
 }
@@ -212,7 +213,7 @@ fn jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
     var p_down = grid_in[get_cell_index(y - 1, x)].p;
     var p_up = grid_in[get_cell_index(y + 1, x)].p;
 
-    let b = (sim_params.fluid_density * delta * delta * cell.divergence) / sim_params.dt;
+    let b = (sim_params.fluid_density * delta * delta * cell.fluid_divergence) / sim_params.dt;
 
     let p_new = (p_left + p_right + p_down + p_up - b) / 4.0;
 
