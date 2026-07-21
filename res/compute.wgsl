@@ -160,7 +160,7 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute
 @workgroup_size(8, 8, 1)
-fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn compute_fluid_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
@@ -194,7 +194,7 @@ fn compute_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute
 @workgroup_size(8, 8, 1)
-fn jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn fluid_jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
@@ -381,6 +381,40 @@ fn constrained_transport_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     cell.bx -= (ε_z_tl - ε_z_bl) * dt / delta;
     cell.by += (ε_z_br - ε_z_bl) * dt / delta;
+
+    grid_out[index] = cell;
+}
+
+@compute
+@workgroup_size(8, 8, 1)
+fn compute_magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let x = i32(col);
+    let y = i32(row);
+    let delta = f32(sim_params.cell_size);
+
+    let index = get_cell_index(y, x);
+    var cell = grid_in[index];
+    var bx_right = grid_in[get_cell_index(y, x + 1)].u;
+    var by_up = grid_in[get_cell_index(y + 1, x)].v;
+
+    if x == i32(sim_params.active_cols - 1) {
+        bx_right = 0.0;
+    }
+    if y == i32(sim_params.active_rows - 1) {
+        by_up = 0.0;
+    }
+
+    let div_bx = (bx_right - cell.bx) / delta;
+    let div_by = (by_up - cell.by) / delta;
+
+    cell.magnetic_divergence = div_bx + div_by;
 
     grid_out[index] = cell;
 }
