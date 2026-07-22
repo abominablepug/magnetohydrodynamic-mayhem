@@ -12,6 +12,10 @@ struct SimParams {
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
+    mouse_x: f32,
+    mouse_y: f32,
+    mouse_left_clicked: u32,
+    mouse_right_clicked: u32,
     _padding: [u32; 2],
 }
 
@@ -31,6 +35,7 @@ struct Cell {
 }
 
 struct ComputeResources {
+    interaction_pipeline: wgpu::ComputePipeline,
     advection_pipeline: wgpu::ComputePipeline,
     induction_pipeline: wgpu::ComputePipeline,
     current_pipeline: wgpu::ComputePipeline,
@@ -64,6 +69,8 @@ pub struct State {
     window: Arc<winit::window::Window>,
     compute: ComputeResources,
     render: RenderResources,
+    pub current_sim_params: SimParams,
+    pub sim_params_buffer: wgpu::Buffer,
 }
 
 impl State {
@@ -122,6 +129,10 @@ impl State {
             active_cols,
             active_rows,
             cell_size: CELL_SIZE,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            mouse_left_clicked: 0,
+            mouse_right_clicked: 0,
             _padding: [0; 2],
         };
 
@@ -203,6 +214,13 @@ impl State {
                 bind_group_layouts: &[Some(&compute_bind_group_layout)],
                 immediate_size: 0,
             });
+
+        let interaction_pipeline = create_compute_pipeline(
+            &device,
+            Some("Interaction Compute Pipeline"),
+            Some("user_interaction_step"),
+            Some(&compute_pipeline_layout),
+        );
 
         let advection_pipeline = create_compute_pipeline(
             &device,
@@ -331,6 +349,7 @@ impl State {
         });
 
         let compute = ComputeResources {
+            interaction_pipeline,
             advection_pipeline,
             induction_pipeline,
             current_pipeline,
@@ -397,10 +416,18 @@ impl State {
             window,
             compute,
             render,
+            current_sim_params: sim_params,
+            sim_params_buffer,
         }
     }
 
     pub fn update(&mut self, encoder: &mut wgpu::CommandEncoder) -> bool {
+        self.queue.write_buffer(
+            &self.sim_params_buffer,
+            0,
+            bytemuck::cast_slice(&[self.current_sim_params]),
+        );
+
         let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("MHD Compute Pass"),
             timestamp_writes: None,
@@ -424,6 +451,12 @@ impl State {
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
             *is_a = !*is_a;
         };
+
+        dispatch(
+            &mut compute_pass,
+            &self.compute.interaction_pipeline,
+            &mut is_a,
+        );
 
         dispatch(
             &mut compute_pass,
@@ -476,6 +509,21 @@ impl State {
         );
 
         is_a
+    }
+
+    pub fn update_cursor_position(&mut self, x: f32, y: f32) {
+        self.current_sim_params.mouse_x = x;
+        self.current_sim_params.mouse_y = y;
+    }
+
+    pub fn update_mouse_click(&mut self, button: u32, is_pressed: bool) {
+        let state_val = if is_pressed { 1 } else { 0 };
+
+        if button == 0 {
+            self.current_sim_params.mouse_left_clicked = state_val;
+        } else if button == 1 {
+            self.current_sim_params.mouse_right_clicked = state_val;
+        }
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {

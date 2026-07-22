@@ -5,6 +5,10 @@ struct SimParams {
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
+    mouse_x: f32,
+    mouse_y: f32,
+    mouse_left_clicked: u32,
+    mouse_right_clicked: u32,
     _padding: vec2<u32>,
 }
 
@@ -504,6 +508,35 @@ fn lorentz_force_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     cell.u += lorentz_force.x;
     cell.v += lorentz_force.y;
+
+    grid_out[index] = cell;
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn user_interaction_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+    if col >= sim_params.active_cols || row >= sim_params.active_rows { return; }
+
+    let index = get_cell_index(i32(row), i32(col));
+    var cell = grid_in[index];
+
+    let cell_x = f32(col * sim_params.cell_size);
+    let cell_y = f32(row * sim_params.cell_size);
+
+    let dx = cell_x - sim_params.mouse_x;
+    let dy = cell_y - sim_params.mouse_y;
+    let dist = sqrt(dx * dx + dy * dy);
+
+    if sim_params.mouse_left_clicked == 1u && dist < 30.0 {
+        let force = 50.0 * (1.0 - dist / 30.0);
+        cell.u += force;
+    }
+
+    if sim_params.mouse_right_clicked == 1u && dist < 50.0 {
+        let b_force = 10.0 * (1.0 - dist / 50.0);
+        cell.by += b_force;
+    }
 
     grid_out[index] = cell;
 }

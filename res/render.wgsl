@@ -5,6 +5,10 @@ struct SimParams {
     active_cols: u32,
     active_rows: u32,
     cell_size: u32,
+    mouse_x: f32,
+    mouse_y: f32,
+    mouse_left_clicked: u32,
+    mouse_right_clicked: u32,
     _padding: vec2<u32>,
 }
 

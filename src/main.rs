@@ -75,6 +75,25 @@ impl ApplicationHandler for App {
                     } => {
                         event_loop.exit();
                     }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        if let Some(state) = &mut self.state {
+                            state.update_cursor_position(position.x as f32, position.y as f32);
+                        }
+                    }
+                    WindowEvent::MouseInput {
+                        state: button_state,
+                        button,
+                        ..
+                    } => {
+                        if let Some(state) = &mut self.state {
+                            let is_pressed = button_state == ElementState::Pressed;
+                            match button {
+                                MouseButton::Left => state.update_mouse_click(0, is_pressed),
+                                MouseButton::Right => state.update_mouse_click(1, is_pressed),
+                                _ => {}
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
