@@ -1,4 +1,4 @@
-use crate::config::{CELL_SIZE, DENSITY, DT, FLUID_DENSITY, VISCOSITY};
+use crate::config::{CELL_SIZE, CONDUCTIVITY, DT, FLUID_DENSITY, VISCOSITY};
 use crate::pipeline::create_compute_pipeline;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -26,6 +26,8 @@ struct Cell {
     fluid_divergence: f32,
     phi: f32,
     magnetic_divergence: f32,
+    current_density: f32,
+    _padding: [f32; 3],
 }
 
 struct ComputeResources {
@@ -115,6 +117,8 @@ impl State {
                 fluid_divergence: 0.0,
                 phi: 0.0,
                 magnetic_divergence: 0.0,
+                current_density: 0.0,
+                _padding: [0.0; 3],
             };
             (active_cols * active_rows) as usize
         ];
