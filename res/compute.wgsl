@@ -525,3 +525,44 @@ fn current_density_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     grid_out[index] = cell;
 }
+
+@compute
+@workgroup_size(8, 8, 1)
+fn lorentz_force_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let index = get_cell_index(i32(row), i32(col));
+    var cell = grid_in[index];
+    let current_density_left = grid_in[get_cell_index(i32(row), i32(col - 1))].current_density;
+    let current_density_down = grid_in[get_cell_index(i32(row - 1), i32(col))].current_density;
+    let delta = f32(sim_params.cell_size);
+    let dt = sim_params.dt;
+
+    let j_x = (cell.current_density + current_density_left) / 2.0;
+    let j_y = (cell.current_density + current_density_down) / 2.0;
+
+    var x = f32(col) * delta;
+    var y = (f32(row) + 0.5) * delta;
+
+    let local_by = bilinear_interpolation_by(x, y);
+
+    x = (f32(col) + 0.5) * delta;
+    y = f32(row) * delta;
+
+    let local_bx = bilinear_interpolation_bx(x, y);
+
+    let lorentz_force = vec2<f32>(
+        -j_x * local_by,
+        j_y * local_bx
+    ) / sim_params.fluid_density * dt;
+
+    cell.u += lorentz_force.x;
+    cell.v += lorentz_force.y;
+
+    grid_out[index] = cell;
+}
