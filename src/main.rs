@@ -7,6 +7,7 @@ use winit::{
     application::ApplicationHandler,
     event::*,
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -60,6 +61,17 @@ impl ApplicationHandler for App {
                                 Err(e) => eprintln!("{:?}", e),
                             }
                         }
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                state: ElementState::Pressed,
+                                ..
+                            },
+                        ..
+                    } => {
+                        event_loop.exit();
                     }
                     _ => {}
                 }

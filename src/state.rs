@@ -1,5 +1,5 @@
-use crate::config::{CELL_SIZE, CONDUCTIVITY, DT, FLUID_DENSITY, VISCOSITY};
-use crate::pipeline::create_compute_pipeline;
+use crate::config::{CELL_SIZE, DT, FLUID_DENSITY, VISCOSITY};
+use crate::pipeline::*;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -38,6 +38,11 @@ struct ComputeResources {
     bind_group: wgpu::BindGroup,
 }
 
+struct RenderResources {
+    render_pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+}
+
 pub struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -46,6 +51,7 @@ pub struct State {
     size: winit::dpi::PhysicalSize<u32>,
     window: Arc<winit::window::Window>,
     compute: ComputeResources,
+    render: RenderResources,
 }
 
 impl State {
@@ -123,8 +129,11 @@ impl State {
             (active_cols * active_rows) as usize
         ];
 
-        let compute_pipeline =
-            create_compute_pipeline(&device, Some("Compute Pipeline"), Some("cs_main"));
+        let fluid_advection_pipeline = create_compute_pipeline(
+            &device,
+            Some("Compute Pipeline"),
+            Some("fluid_advection_step"),
+        );
 
         let sim_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Sim Params Buffer"),
@@ -146,7 +155,7 @@ impl State {
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
-            layout: &compute_pipeline.get_bind_group_layout(0),
+            layout: &fluid_advection_pipeline.get_bind_group_layout(0),
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -163,12 +172,34 @@ impl State {
             ],
         });
 
+        let render_pipeline = create_render_pipeline(&device);
+
+        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Render Bind Group"),
+            layout: &render_pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: sim_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: grid_out_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let compute = ComputeResources {
-            compute_pipeline,
+            compute_pipeline: fluid_advection_pipeline,
             sim_params_buffer,
             grid_in_buffer,
             grid_out_buffer,
             bind_group,
+        };
+
+        let render = RenderResources {
+            render_pipeline,
+            bind_group: render_bind_group,
         };
 
         Self {
@@ -179,6 +210,7 @@ impl State {
             size,
             window,
             compute,
+            render,
         }
     }
 
@@ -216,7 +248,7 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -237,6 +269,10 @@ impl State {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
+            rpass.set_pipeline(&self.render.render_pipeline);
+            rpass.set_bind_group(0, &self.render.bind_group, &[]);
+            rpass.draw(0..3, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

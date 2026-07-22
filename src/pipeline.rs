@@ -1,15 +1,12 @@
-pub fn create_render_pipeline(
-    device: &wgpu::Device,
-    layout: &wgpu::PipelineLayout,
-) -> wgpu::RenderPipeline {
+pub fn create_render_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("../res/shader.wgsl").into()),
+        source: wgpu::ShaderSource::Wgsl(include_str!("../res/render.wgsl").into()),
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
-        layout: Some(layout),
+        layout: None,
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
@@ -20,7 +17,7 @@ pub fn create_render_pipeline(
             module: &shader,
             entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 blend: Some(wgpu::BlendState::REPLACE),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
