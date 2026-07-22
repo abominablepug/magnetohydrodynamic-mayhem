@@ -51,7 +51,8 @@ struct ComputeResources {
 
 struct RenderResources {
     render_pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
+    bind_group_reading_a: wgpu::BindGroup,
+    bind_group_reading_b: wgpu::BindGroup,
 }
 
 pub struct State {
@@ -140,64 +141,118 @@ impl State {
             (active_cols * active_rows) as usize
         ];
 
+        let compute_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Shared Compute Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Shared Compute Pipeline Layout"),
+                bind_group_layouts: &[Some(&compute_bind_group_layout)],
+                immediate_size: 0,
+            });
+
         let advection_pipeline = create_compute_pipeline(
             &device,
             Some("Advection Compute Pipeline"),
             Some("fluid_advection_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let induction_pipeline = create_compute_pipeline(
             &device,
             Some("Induction Compute Pipeline"),
             Some("magnetic_induction_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let current_pipeline = create_compute_pipeline(
             &device,
             Some("Current Density Compute Pipeline"),
             Some("current_density_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let lorentz_pipeline = create_compute_pipeline(
             &device,
             Some("Lorentz Force Compute Pipeline"),
             Some("lorentz_force_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let fluid_divergence_pipeline = create_compute_pipeline(
             &device,
             Some("Fluid Divergence Compute Pipeline"),
             Some("fluid_divergence_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let fluid_jacobi_pipeline = create_compute_pipeline(
             &device,
             Some("Fluid Jacobi Compute Pipeline"),
             Some("fluid_jacobi_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let fluid_gradient_pipeline = create_compute_pipeline(
             &device,
             Some("Fluid Gradient Compute Pipeline"),
-            Some("fluid_gradient_step"),
+            Some("pressure_gradient_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let mag_divergence_pipeline = create_compute_pipeline(
             &device,
             Some("Magnetic Divergence Compute Pipeline"),
             Some("magnetic_divergence_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let mag_jacobi_pipeline = create_compute_pipeline(
             &device,
             Some("Magnetic Jacobi Compute Pipeline"),
             Some("magnetic_jacobi_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let mag_gradient_pipeline = create_compute_pipeline(
             &device,
             Some("Magnetic Gradient Compute Pipeline"),
-            Some("magnetic_gradient_step"),
+            Some("electric_potential_gradient_step"),
+            Some(&compute_pipeline_layout),
         );
 
         let sim_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -220,7 +275,7 @@ impl State {
 
         let bind_group_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Bind Group A"),
-            layout: &advection_pipeline.get_bind_group_layout(0),
+            layout: &compute_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -239,7 +294,7 @@ impl State {
 
         let bind_group_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Bind Group B"),
-            layout: &advection_pipeline.get_bind_group_layout(0),
+            layout: &compute_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -252,23 +307,6 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: grid_in_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
-        let render_pipeline = create_render_pipeline(&device);
-
-        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &render_pipeline.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: sim_params_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: grid_out_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -292,9 +330,43 @@ impl State {
             active_rows,
         };
 
+        let render_pipeline = create_render_pipeline(&device);
+        let render_layout = render_pipeline.get_bind_group_layout(0);
+
+        let bind_group_reading_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Render Bind Group A"),
+            layout: &render_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: sim_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: grid_in_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let bind_group_reading_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Render Bind Group B"),
+            layout: &render_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: sim_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: grid_out_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let render = RenderResources {
             render_pipeline,
-            bind_group: render_bind_group,
+            bind_group_reading_a,
+            bind_group_reading_b,
         };
 
         Self {
@@ -413,12 +485,15 @@ impl State {
                 anyhow::bail!("Lost device");
             }
         };
+
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let final_buffer_b = self.update(&mut encoder);
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -444,7 +519,14 @@ impl State {
             });
 
             rpass.set_pipeline(&self.render.render_pipeline);
-            rpass.set_bind_group(0, &self.render.bind_group, &[]);
+
+            let bind_group = if final_buffer_b {
+                &self.render.bind_group_reading_b
+            } else {
+                &self.render.bind_group_reading_a
+            };
+
+            rpass.set_bind_group(0, bind_group, &[]);
             rpass.draw(0..3, 0..1);
         }
 

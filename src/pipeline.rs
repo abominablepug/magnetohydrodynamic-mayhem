@@ -47,6 +47,7 @@ pub fn create_compute_pipeline(
     device: &wgpu::Device,
     label: Option<&str>,
     entry_point: Option<&str>,
+    pipeline_layout: Option<&wgpu::PipelineLayout>,
 ) -> wgpu::ComputePipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
@@ -55,7 +56,7 @@ pub fn create_compute_pipeline(
 
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label,
-        layout: None,
+        layout: pipeline_layout,
         module: &shader,
         entry_point,
         compilation_options: Default::default(),
