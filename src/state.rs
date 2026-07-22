@@ -31,11 +31,22 @@ struct Cell {
 }
 
 struct ComputeResources {
-    compute_pipeline: wgpu::ComputePipeline,
-    sim_params_buffer: wgpu::Buffer,
-    grid_in_buffer: wgpu::Buffer,
-    grid_out_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+    advection_pipeline: wgpu::ComputePipeline,
+    induction_pipeline: wgpu::ComputePipeline,
+    current_pipeline: wgpu::ComputePipeline,
+    lorentz_pipeline: wgpu::ComputePipeline,
+    fluid_divergence_pipeline: wgpu::ComputePipeline,
+    fluid_jacobi_pipeline: wgpu::ComputePipeline,
+    fluid_gradient_pipeline: wgpu::ComputePipeline,
+    mag_divergence_pipeline: wgpu::ComputePipeline,
+    mag_jacobi_pipeline: wgpu::ComputePipeline,
+    mag_gradient_pipeline: wgpu::ComputePipeline,
+
+    bind_group_a: wgpu::BindGroup,
+    bind_group_b: wgpu::BindGroup,
+
+    active_cols: u32,
+    active_rows: u32,
 }
 
 struct RenderResources {
@@ -129,10 +140,64 @@ impl State {
             (active_cols * active_rows) as usize
         ];
 
-        let fluid_advection_pipeline = create_compute_pipeline(
+        let advection_pipeline = create_compute_pipeline(
             &device,
-            Some("Compute Pipeline"),
+            Some("Advection Compute Pipeline"),
             Some("fluid_advection_step"),
+        );
+
+        let induction_pipeline = create_compute_pipeline(
+            &device,
+            Some("Induction Compute Pipeline"),
+            Some("magnetic_induction_step"),
+        );
+
+        let current_pipeline = create_compute_pipeline(
+            &device,
+            Some("Current Density Compute Pipeline"),
+            Some("current_density_step"),
+        );
+
+        let lorentz_pipeline = create_compute_pipeline(
+            &device,
+            Some("Lorentz Force Compute Pipeline"),
+            Some("lorentz_force_step"),
+        );
+
+        let fluid_divergence_pipeline = create_compute_pipeline(
+            &device,
+            Some("Fluid Divergence Compute Pipeline"),
+            Some("fluid_divergence_step"),
+        );
+
+        let fluid_jacobi_pipeline = create_compute_pipeline(
+            &device,
+            Some("Fluid Jacobi Compute Pipeline"),
+            Some("fluid_jacobi_step"),
+        );
+
+        let fluid_gradient_pipeline = create_compute_pipeline(
+            &device,
+            Some("Fluid Gradient Compute Pipeline"),
+            Some("fluid_gradient_step"),
+        );
+
+        let mag_divergence_pipeline = create_compute_pipeline(
+            &device,
+            Some("Magnetic Divergence Compute Pipeline"),
+            Some("magnetic_divergence_step"),
+        );
+
+        let mag_jacobi_pipeline = create_compute_pipeline(
+            &device,
+            Some("Magnetic Jacobi Compute Pipeline"),
+            Some("magnetic_jacobi_step"),
+        );
+
+        let mag_gradient_pipeline = create_compute_pipeline(
+            &device,
+            Some("Magnetic Gradient Compute Pipeline"),
+            Some("magnetic_gradient_step"),
         );
 
         let sim_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -153,9 +218,9 @@ impl State {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &fluid_advection_pipeline.get_bind_group_layout(0),
+        let bind_group_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Bind Group A"),
+            layout: &advection_pipeline.get_bind_group_layout(0),
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -168,6 +233,25 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: grid_out_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let bind_group_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Bind Group B"),
+            layout: &advection_pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: sim_params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: grid_out_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: grid_in_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -190,11 +274,22 @@ impl State {
         });
 
         let compute = ComputeResources {
-            compute_pipeline: fluid_advection_pipeline,
-            sim_params_buffer,
-            grid_in_buffer,
-            grid_out_buffer,
-            bind_group,
+            advection_pipeline,
+            induction_pipeline,
+            current_pipeline,
+            lorentz_pipeline,
+            fluid_divergence_pipeline,
+            fluid_jacobi_pipeline,
+            fluid_gradient_pipeline,
+            mag_divergence_pipeline,
+            mag_jacobi_pipeline,
+            mag_gradient_pipeline,
+
+            bind_group_a,
+            bind_group_b,
+
+            active_cols,
+            active_rows,
         };
 
         let render = RenderResources {
@@ -212,6 +307,84 @@ impl State {
             compute,
             render,
         }
+    }
+
+    pub fn update(&mut self, encoder: &mut wgpu::CommandEncoder) -> bool {
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("MHD Compute Pass"),
+            timestamp_writes: None,
+        });
+
+        let workgroups_x = (self.compute.active_cols + 7) / 8;
+        let workgroups_y = (self.compute.active_rows + 7) / 8;
+
+        let mut is_a = true;
+
+        let mut dispatch = |compute_pass: &mut wgpu::ComputePass,
+                            pipeline: &wgpu::ComputePipeline,
+                            is_a: &mut bool| {
+            compute_pass.set_pipeline(pipeline);
+            let bind_group = if *is_a {
+                &self.compute.bind_group_a
+            } else {
+                &self.compute.bind_group_b
+            };
+            compute_pass.set_bind_group(0, bind_group, &[]);
+            compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
+            *is_a = !*is_a;
+        };
+
+        dispatch(
+            &mut compute_pass,
+            &self.compute.advection_pipeline,
+            &mut is_a,
+        );
+        dispatch(
+            &mut compute_pass,
+            &self.compute.induction_pipeline,
+            &mut is_a,
+        );
+
+        dispatch(&mut compute_pass, &self.compute.current_pipeline, &mut is_a);
+        dispatch(&mut compute_pass, &self.compute.lorentz_pipeline, &mut is_a);
+
+        dispatch(
+            &mut compute_pass,
+            &self.compute.fluid_divergence_pipeline,
+            &mut is_a,
+        );
+        for _ in 0..40 {
+            dispatch(
+                &mut compute_pass,
+                &self.compute.fluid_jacobi_pipeline,
+                &mut is_a,
+            );
+        }
+        dispatch(
+            &mut compute_pass,
+            &self.compute.fluid_gradient_pipeline,
+            &mut is_a,
+        );
+
+        dispatch(
+            &mut compute_pass,
+            &self.compute.mag_divergence_pipeline,
+            &mut is_a,
+        );
+        for _ in 0..40 {
+            dispatch(
+                &mut compute_pass,
+                &self.compute.mag_jacobi_pipeline,
+                &mut is_a,
+            );
+        }
+        dispatch(
+            &mut compute_pass,
+            &self.compute.mag_gradient_pipeline,
+            &mut is_a,
+        );
+
+        is_a
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
