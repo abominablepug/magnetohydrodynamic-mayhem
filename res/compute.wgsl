@@ -487,3 +487,41 @@ fn electric_potential_gradient_step(@builtin(global_invocation_id) id: vec3<u32>
 
     grid_out[index] = cell;
 }
+
+@compute
+@workgroup_size(8, 8, 1)
+fn current_density_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let col = id.x;
+    let row = id.y;
+
+    if col >= sim_params.active_cols || row >= sim_params.active_rows {
+        return;
+    }
+
+    let index = get_cell_index(i32(row), i32(col));
+    var cell = grid_in[index];
+    let delta = f32(sim_params.cell_size);
+    let dt = sim_params.dt;
+
+    var by_x = (f32(col) + 1.0) * delta;
+    var by_y = (f32(row) + 0.5) * delta;
+
+    let by_right = bilinear_interpolation_by(by_x, by_y);
+
+    by_x = f32(col) * delta;
+
+    let by_left = bilinear_interpolation_by(by_x, by_y);
+
+    var bx_x = (f32(col) + 0.5) * delta;
+    var bx_y = (f32(row) + 1.0) * delta;
+
+    let bx_up = bilinear_interpolation_bx(bx_x, bx_y);
+
+    bx_y = f32(row) * delta;
+
+    let bx_down = bilinear_interpolation_bx(bx_x, bx_y);
+
+    cell.current_density = ((by_right - by_left) - (bx_up - bx_down)) / delta;
+
+    grid_out[index] = cell;
+}
