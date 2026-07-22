@@ -57,7 +57,9 @@ impl ApplicationHandler for App {
                     WindowEvent::RedrawRequested => {
                         if let Some(state) = &mut self.state {
                             match state.render() {
-                                Ok(_) => {}
+                                Ok(_) => {
+                                    window.request_redraw();
+                                }
                                 Err(e) => eprintln!("{:?}", e),
                             }
                         }

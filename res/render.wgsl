@@ -18,7 +18,7 @@ struct Cell {
     phi: f32,
     magnetic_divergence: f32,
     current_density: f32,
-    _padding: vec3<f32>,
+    _padding: array<f32, 3>,
 }
 
 @group(0) @binding(0) var<uniform> sim_params: SimParams;

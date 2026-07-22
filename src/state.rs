@@ -125,7 +125,7 @@ impl State {
             _padding: [0; 2],
         };
 
-        let grid = vec![
+        let mut grid = vec![
             Cell {
                 u: 0.0,
                 v: 0.0,
@@ -140,6 +140,25 @@ impl State {
             };
             (active_cols * active_rows) as usize
         ];
+
+        let center_x = active_cols as f32 / 2.0;
+        let center_y = active_rows as f32 / 2.0;
+
+        for row in 0..active_rows {
+            for col in 0..active_cols {
+                let index = (row * active_cols + col) as usize;
+                let dx = col as f32 - center_x;
+                let dy = row as f32 - center_y;
+                let distance = (dx * dx + dy * dy).sqrt();
+
+                if distance < 20.0 && distance > 1.0 {
+                    grid[index].u = (-dy / distance) * 100.0;
+                    grid[index].v = (dx / distance) * 100.0;
+
+                    grid[index].bx = 50.0;
+                }
+            }
+        }
 
         let compute_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -330,7 +349,7 @@ impl State {
             active_rows,
         };
 
-        let render_pipeline = create_render_pipeline(&device);
+        let render_pipeline = create_render_pipeline(&device, config.format);
         let render_layout = render_pipeline.get_bind_group_layout(0);
 
         let bind_group_reading_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -521,9 +540,9 @@ impl State {
             rpass.set_pipeline(&self.render.render_pipeline);
 
             let bind_group = if final_buffer_b {
-                &self.render.bind_group_reading_b
-            } else {
                 &self.render.bind_group_reading_a
+            } else {
+                &self.render.bind_group_reading_b
             };
 
             rpass.set_bind_group(0, bind_group, &[]);

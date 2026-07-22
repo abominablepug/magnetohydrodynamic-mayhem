@@ -18,7 +18,7 @@ struct Cell {
     phi: f32,
     magnetic_divergence: f32,
     current_density: f32,
-    _padding: vec3<f32>,
+    _padding: array<f32, 3>,
 }
 
 @group(0) @binding(0) var<uniform> sim_params: SimParams;
@@ -36,11 +36,11 @@ fn bilinear_prep(x: f32, y: f32, is_x: bool) -> vec4<f32> {
     var grid_y: f32;
 
     if is_x {
-        var grid_x = (x / f32(sim_params.cell_size)) - 0.5;
-        var grid_y = y / f32(sim_params.cell_size);
+        grid_x = (x / f32(sim_params.cell_size)) - 0.5;
+        grid_y = y / f32(sim_params.cell_size);
     } else {
-        var grid_x = x / f32(sim_params.cell_size);
-        var grid_y = (y / f32(sim_params.cell_size)) - 0.5;
+        grid_x = x / f32(sim_params.cell_size);
+        grid_y = (y / f32(sim_params.cell_size)) - 0.5;
     }
 
     let col = i32(floor(grid_x));
