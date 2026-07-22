@@ -162,7 +162,7 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute
 @workgroup_size(8, 8, 1)
-fn compute_fluid_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn fluid_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
@@ -196,7 +196,7 @@ fn compute_fluid_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute
 @workgroup_size(8, 8, 1)
-fn fluid_jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn fluid_jacobi_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
@@ -330,66 +330,7 @@ fn magnetic_induction_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute
 @workgroup_size(8, 8, 1)
-fn constrained_transport_step(@builtin(global_invocation_id) id: vec3<u32>) {
-    let col = id.x;
-    let row = id.y;
-
-    if col >= sim_params.active_cols || row >= sim_params.active_rows {
-        return;
-    }
-
-    let index = get_cell_index(i32(row), i32(col));
-    var cell = grid_in[index];
-    let delta = f32(sim_params.cell_size);
-    let dt = sim_params.dt;
-
-    // bottom left
-
-    var x = f32(col) * delta;
-    var y = f32(row) * delta;
-
-    var local_bx = bilinear_interpolation_bx(x, y);
-    var local_by = bilinear_interpolation_by(x, y);
-    var local_u = bilinear_interpolation_u(x, y);
-    var local_v = bilinear_interpolation_v(x, y);
-
-    let ε_z_bl = local_v * local_bx - local_u * local_by;
-
-    // top left
-
-    x = f32(col) * delta;
-    y = (f32(row) + 1.0) * delta;
-
-    local_bx = bilinear_interpolation_bx(x, y);
-    local_by = bilinear_interpolation_by(x, y);
-    local_u = bilinear_interpolation_u(x, y);
-    local_v = bilinear_interpolation_v(x, y);
-
-    let ε_z_tl = local_v * local_bx - local_u * local_by;
-
-    // bottom right
-
-    x = (f32(col) + 1.0) * delta;
-    y = f32(row) * delta;
-
-    local_bx = bilinear_interpolation_bx(x, y);
-    local_by = bilinear_interpolation_by(x, y);
-    local_u = bilinear_interpolation_u(x, y);
-    local_v = bilinear_interpolation_v(x, y);
-
-    let ε_z_br = local_v * local_bx - local_u * local_by;
-
-    // update
-
-    cell.bx -= (ε_z_tl - ε_z_bl) * dt / delta;
-    cell.by += (ε_z_br - ε_z_bl) * dt / delta;
-
-    grid_out[index] = cell;
-}
-
-@compute
-@workgroup_size(8, 8, 1)
-fn compute_magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
@@ -423,7 +364,7 @@ fn compute_magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>
 
 @compute
 @workgroup_size(8, 8, 1)
-fn magnetic_jacobi_iteration_step(@builtin(global_invocation_id) id: vec3<u32>) {
+fn magnetic_jacobi_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let col = id.x;
     let row = id.y;
 
