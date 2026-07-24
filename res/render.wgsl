@@ -94,6 +94,40 @@ fn bilinear_interpolation_v(x: f32, y: f32) -> f32 {
     return mix(mix_bottom, mix_top, ty);
 }
 
+fn bilinear_interpolation_bx(x: f32, y: f32) -> f32 {
+    let prep = bilinear_prep(x, y, true);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
+
+    let bx00 = grid[get_cell_index(row, col)].bx;
+    let bx10 = grid[get_cell_index(row, col + 1)].bx;
+    let bx01 = grid[get_cell_index(row + 1, col)].bx;
+    let bx11 = grid[get_cell_index(row + 1, col + 1)].bx;
+
+    let mix_bottom = mix(bx00, bx10, tx);
+    let mix_top = mix(bx01, bx11, tx);
+    return mix(mix_bottom, mix_top, ty);
+}
+
+fn bilinear_interpolation_by(x: f32, y: f32) -> f32 {
+    let prep = bilinear_prep(x, y, false);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
+
+    let by00 = grid[get_cell_index(row, col)].by;
+    let by10 = grid[get_cell_index(row, col + 1)].by;
+    let by01 = grid[get_cell_index(row + 1, col)].by;
+    let by11 = grid[get_cell_index(row + 1, col + 1)].by;
+
+    let mix_bottom = mix(by00, by10, tx);
+    let mix_top = mix(by01, by11, tx);
+    return mix(mix_bottom, mix_top, ty);
+}
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var output: VertexOutput;
@@ -142,14 +176,56 @@ fn fluid_background(input: VertexOutput) -> @location(0) vec4<f32> {
 
 @fragment
 fn magnetic_field_lines(input: VertexOutput) -> @location(0) vec4<f32> {
-    let color = vec3<f32>(0.0, 0.0, 0.0);
+    let col_f = input.uv.x * f32(sim_params.active_cols);
+    let row_f = input.uv.y * f32(sim_params.active_rows);
 
-    return vec4<f32>(color, 0.0);
+    let col = clamp(u32(col_f), 0u, sim_params.active_cols - 1u);
+    let row = clamp(u32(row_f), 0u, sim_params.active_rows - 1u);
+
+    let delta = f32(sim_params.cell_size);
+
+    let x = (f32(col) + 0.5) * delta;
+    let y = (f32(row) + 0.5) * delta;
+
+    let bx = bilinear_interpolation_bx(x, y);
+    let by = bilinear_interpolation_by(x, y);
+
+    let b_vector = vec2<f32>(bx, by);
+    let b_magnitude = length(b_vector);
+
+    let epsilon = 1e-7;
+    let b_direction = normalize(b_vector + vec2<f32>(epsilon, epsilon));
+
+    let local_p = vec2<f32>(fract(col_f) - 0.5, fract(row_f) - 0.5);
+
+    let proj_length = dot(local_p, b_direction);
+    let proj_point = b_direction * proj_length;
+
+    let dist_to_line = length(local_p - proj_point);
+
+    let thickness = 0.06;
+    let line_length_half = 0.35;
+    let edge_softness = 0.03;
+
+    let alpha_thickness = 1.0 - smoothstep(thickness - edge_softness, thickness + edge_softness, dist_to_line);
+    let alpha_length = 1.0 - smoothstep(line_length_half - edge_softness, line_length_half + edge_softness, abs(proj_length));
+
+    let shape_alpha = alpha_thickness * alpha_length;
+
+    let max_b = 1.0;
+    let intensity = smoothstep(0.0, max_b, b_magnitude);
+
+    // royal purple accent
+    let royal_purple = vec3<f32>(0.4, 0.1, 0.86);
+
+    let final_color = royal_purple * intensity;
+    let final_alpha = shape_alpha * intensity;
+
+    return vec4<f32>(final_color, final_alpha);
 }
 
 @fragment
 fn interaction_density_glow(input: VertexOutput) -> @location(0) vec4<f32> {
     let color = vec3<f32>(0.0, 0.0, 0.0);
-
     return vec4<f32>(color, 0.0);
 }
