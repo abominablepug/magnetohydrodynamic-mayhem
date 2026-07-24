@@ -152,20 +152,42 @@ impl State {
             (active_cols * active_rows) as usize
         ];
 
-        let center_x = active_cols as f32 / 2.0;
         let center_y = active_rows as f32 / 2.0;
+
+        let center_x_left = active_cols as f32 * 0.35;
+        let center_x_right = active_cols as f32 * 0.65;
+
+        let vortex_radius = 35.0;
+        let vortex_strength = 150.0;
 
         for row in 0..active_rows {
             for col in 0..active_cols {
                 let index = (row * active_cols + col) as usize;
-                let dx = col as f32 - center_x;
-                let dy = row as f32 - center_y;
-                let distance = (dx * dx + dy * dy).sqrt();
 
                 grid[index].bx = 50.0;
-                if distance < 20.0 && distance > 1.0 {
-                    grid[index].u = (-dy / distance) * 100.0;
-                    grid[index].v = (dx / distance) * 100.0;
+                grid[index].by = 0.0;
+
+                let dx_left = col as f32 - center_x_left;
+                let dy_left = row as f32 - center_y;
+                let dist_left = (dx_left * dx_left + dy_left * dy_left).sqrt();
+
+                let dx_right = col as f32 - center_x_right;
+                let dy_right = row as f32 - center_y;
+                let dist_right = (dx_right * dx_right + dy_right * dy_right).sqrt();
+
+                grid[index].u = 0.0;
+                grid[index].v = 0.0;
+
+                if dist_left < vortex_radius && dist_left > 1.0 {
+                    let falloff = 1.0 - (dist_left / vortex_radius);
+                    grid[index].u += (-dy_left / dist_left) * vortex_strength * falloff;
+                    grid[index].v += (dx_left / dist_left) * vortex_strength * falloff;
+                }
+
+                if dist_right < vortex_radius && dist_right > 1.0 {
+                    let falloff = 1.0 - (dist_right / vortex_radius);
+                    grid[index].u += (dy_right / dist_right) * vortex_strength * falloff;
+                    grid[index].v += (-dx_right / dist_right) * vortex_strength * falloff;
                 }
             }
         }
