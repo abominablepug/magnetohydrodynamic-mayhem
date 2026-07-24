@@ -1,6 +1,7 @@
 pub fn create_render_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
+    layout: Option<&wgpu::PipelineLayout>,
     vertex_shader_entry: Option<&str>,
     fragment_shader_entry: Option<&str>,
 ) -> wgpu::RenderPipeline {
@@ -11,7 +12,7 @@ pub fn create_render_pipeline(
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
-        layout: None,
+        layout: layout,
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: vertex_shader_entry,
@@ -23,7 +24,7 @@ pub fn create_render_pipeline(
             entry_point: fragment_shader_entry,
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),

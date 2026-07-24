@@ -55,7 +55,9 @@ struct ComputeResources {
 }
 
 struct RenderResources {
-    render_pipeline: wgpu::RenderPipeline,
+    layer_1_pipeline: wgpu::RenderPipeline,
+    layer_2_pipeline: wgpu::RenderPipeline,
+    layer_3_pipeline: wgpu::RenderPipeline,
     bind_group_reading_a: wgpu::BindGroup,
     bind_group_reading_b: wgpu::BindGroup,
 }
@@ -368,17 +370,65 @@ impl State {
             active_rows,
         };
 
-        let render_pipeline = create_render_pipeline(
+        let render_bind_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Render Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[Some(&render_bind_layout)],
+                immediate_size: 0,
+            });
+
+        let layer_1_pipeline = create_render_pipeline(
             &device,
             config.format,
+            Some(&render_pipeline_layout),
             Some("vs_main"),
             Some("fluid_background"),
         );
-        let render_layout = render_pipeline.get_bind_group_layout(0);
+        let layer_2_pipeline = create_render_pipeline(
+            &device,
+            config.format,
+            Some(&render_pipeline_layout),
+            Some("vs_main"),
+            Some("magnetic_field_lines"),
+        );
+        let layer_3_pipeline = create_render_pipeline(
+            &device,
+            config.format,
+            Some(&render_pipeline_layout),
+            Some("vs_main"),
+            Some("interaction_density_glow"),
+        );
 
         let bind_group_reading_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group A"),
-            layout: &render_layout,
+            layout: &render_bind_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -393,7 +443,7 @@ impl State {
 
         let bind_group_reading_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group B"),
-            layout: &render_layout,
+            layout: &render_bind_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -407,7 +457,9 @@ impl State {
         });
 
         let render = RenderResources {
-            render_pipeline,
+            layer_1_pipeline,
+            layer_2_pipeline,
+            layer_3_pipeline,
             bind_group_reading_a,
             bind_group_reading_b,
         };
@@ -590,14 +642,21 @@ impl State {
                 occlusion_query_set: None,
             });
 
-            rpass.set_pipeline(&self.render.render_pipeline);
-
             let bind_group = if final_buffer_b {
                 &self.render.bind_group_reading_a
             } else {
                 &self.render.bind_group_reading_b
             };
 
+            rpass.set_pipeline(&self.render.layer_1_pipeline);
+            rpass.set_bind_group(0, bind_group, &[]);
+            rpass.draw(0..3, 0..1);
+
+            rpass.set_pipeline(&self.render.layer_2_pipeline);
+            rpass.set_bind_group(0, bind_group, &[]);
+            rpass.draw(0..3, 0..1);
+
+            rpass.set_pipeline(&self.render.layer_3_pipeline);
             rpass.set_bind_group(0, bind_group, &[]);
             rpass.draw(0..3, 0..1);
         }

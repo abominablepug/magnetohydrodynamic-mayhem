@@ -139,3 +139,17 @@ fn fluid_background(input: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4<f32>(color, 1.0);
 }
+
+@fragment
+fn magnetic_field_lines(input: VertexOutput) -> @location(0) vec4<f32> {
+    let color = vec3<f32>(0.0, 0.0, 0.0);
+
+    return vec4<f32>(color, 0.0);
+}
+
+@fragment
+fn interaction_density_glow(input: VertexOutput) -> @location(0) vec4<f32> {
+    let color = vec3<f32>(0.0, 0.0, 0.0);
+
+    return vec4<f32>(color, 0.0);
+}
