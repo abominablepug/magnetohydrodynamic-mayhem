@@ -142,65 +142,41 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 }
 
 @fragment
-fn fluid_background(input: VertexOutput) -> @location(0) vec4<f32> {
-    let col = clamp(u32(input.uv.x * f32(sim_params.active_cols)), 0u, sim_params.active_cols - 1u);
-    let row = clamp(u32(input.uv.y * f32(sim_params.active_rows)), 0u, sim_params.active_rows - 1u);
-
-    let index = row * sim_params.active_cols + col;
-    let cell = grid[index];
-    let delta = f32(sim_params.cell_size);
-
-    // velocity curl
-
-    var x = f32(col) * delta;
-    var y = (f32(row) + 0.5) * delta;
-
-    let v_left = bilinear_interpolation_v(x, y);
-    x += delta;
-    let v_right = bilinear_interpolation_v(x, y);
-
-    x = (f32(col) + 0.5) * delta;
-    y = f32(row) * delta;
-
-    let u_down = bilinear_interpolation_u(x, y);
-    y += delta;
-    let u_up = bilinear_interpolation_u(x, y);
-
-    let curl = (v_right - v_left) / delta - (u_up - u_down) / delta;
-
-    // color based on curl (dark blue palette)
-    let color = vec3<f32>(0.0, 0.0, 0.2) + vec3<f32>(0.0, 0.0, 0.4) * clamp(curl * 10.0, -1.0, 1.0);
-
-    return vec4<f32>(color, 1.0);
-}
-
-@fragment
-fn magnetic_field_lines(input: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let col_f = input.uv.x * f32(sim_params.active_cols);
     let row_f = input.uv.y * f32(sim_params.active_rows);
 
     let col = clamp(u32(col_f), 0u, sim_params.active_cols - 1u);
     let row = clamp(u32(row_f), 0u, sim_params.active_rows - 1u);
 
+    let index = row * sim_params.active_cols + col;
+    let cell = grid[index];
     let delta = f32(sim_params.cell_size);
 
-    let x = (f32(col) + 0.5) * delta;
-    let y = (f32(row) + 0.5) * delta;
+    // velocity curl
+    let v_left = bilinear_interpolation_v(f32(col) * delta, (f32(row) + 0.5) * delta);
+    let v_right = bilinear_interpolation_v((f32(col) + 1.0) * delta, (f32(row) + 0.5) * delta);
+    let u_down = bilinear_interpolation_u((f32(col) + 0.5) * delta, f32(row) * delta);
+    let u_up = bilinear_interpolation_u((f32(col) + 0.5) * delta, (f32(row) + 1.0) * delta);
 
-    let bx = bilinear_interpolation_bx(x, y);
-    let by = bilinear_interpolation_by(x, y);
+    let curl = (v_right - v_left) / delta - (u_up - u_down) / delta;
 
+    // color based on curl (dark blue palette)
+    let bg_color = vec3<f32>(0.0, 0.0, 0.15) + vec3<f32>(0.0, 0.0, 0.3) * clamp(curl * 10.0, -1.0, 1.0);
+
+    let center_x = (f32(col) + 0.5) * delta;
+    let center_y = (f32(row) + 0.5) * delta;
+
+    let bx = bilinear_interpolation_bx(center_x, center_y);
+    let by = bilinear_interpolation_by(center_x, center_y);
     let b_vector = vec2<f32>(bx, by);
     let b_magnitude = length(b_vector);
-
     let epsilon = 1e-7;
     let b_direction = normalize(b_vector + vec2<f32>(epsilon, epsilon));
 
     let local_p = vec2<f32>(fract(col_f) - 0.5, fract(row_f) - 0.5);
-
     let proj_length = dot(local_p, b_direction);
     let proj_point = b_direction * proj_length;
-
     let dist_to_line = length(local_p - proj_point);
 
     let thickness = 0.06;
@@ -209,39 +185,27 @@ fn magnetic_field_lines(input: VertexOutput) -> @location(0) vec4<f32> {
 
     let alpha_thickness = 1.0 - smoothstep(thickness - edge_softness, thickness + edge_softness, dist_to_line);
     let alpha_length = 1.0 - smoothstep(line_length_half - edge_softness, line_length_half + edge_softness, abs(proj_length));
-
     let shape_alpha = alpha_thickness * alpha_length;
 
-    let max_b = 1.0;
+    let max_b = 50.0;
     let intensity = smoothstep(0.0, max_b, b_magnitude);
 
     // royal purple accent
     let royal_purple = vec3<f32>(0.4, 0.1, 0.86);
 
-    let final_color = royal_purple * intensity;
-    let final_alpha = shape_alpha * intensity;
-
-    return vec4<f32>(final_color, final_alpha);
-}
-
-@fragment
-fn interaction_density_glow(input: VertexOutput) -> @location(0) vec4<f32> {
-    let col = clamp(u32(input.uv.x * f32(sim_params.active_cols)), 0u, sim_params.active_cols - 1u);
-    let row = clamp(u32(input.uv.y * f32(sim_params.active_rows)), 0u, sim_params.active_rows - 1u);
-
-    let index = row * sim_params.active_cols + col;
-    let cell = grid[index];
+    let line_color = royal_purple * intensity;
+    let line_alpha = shape_alpha * intensity;
 
     // current glow
     let tension_glow = vec3<f32>(0.9, 0.95, 1.0);
-
-    let max_current: f32 = 1.0;
+    let max_current: f32 = 2.0;
 
     let normalized_j = saturate(abs(cell.current_density) / max_current);
-
     let t_snap = pow(normalized_j, 2.0);
+    let glow_color = tension_glow * t_snap;
 
-    let color = tension_glow * t_snap;
+    var final_color = mix(bg_color, line_color, line_alpha);
+    final_color += glow_color;
 
-    return vec4<f32>(color, t_snap);
+    return vec4<f32>(final_color, 1.0);
 }

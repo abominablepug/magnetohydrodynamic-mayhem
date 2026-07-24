@@ -55,9 +55,7 @@ struct ComputeResources {
 }
 
 struct RenderResources {
-    layer_1_pipeline: wgpu::RenderPipeline,
-    layer_2_pipeline: wgpu::RenderPipeline,
-    layer_3_pipeline: wgpu::RenderPipeline,
+    render_pipeline: wgpu::RenderPipeline,
     bind_group_reading_a: wgpu::BindGroup,
     bind_group_reading_b: wgpu::BindGroup,
 }
@@ -71,7 +69,7 @@ pub struct State {
     window: Arc<winit::window::Window>,
     compute: ComputeResources,
     render: RenderResources,
-    pub current_sim_params: SimParams,
+    current_sim_params: SimParams,
     pub sim_params_buffer: wgpu::Buffer,
 }
 
@@ -164,11 +162,10 @@ impl State {
                 let dy = row as f32 - center_y;
                 let distance = (dx * dx + dy * dy).sqrt();
 
+                grid[index].bx = 50.0;
                 if distance < 20.0 && distance > 1.0 {
                     grid[index].u = (-dy / distance) * 100.0;
                     grid[index].v = (dx / distance) * 100.0;
-
-                    grid[index].bx = 50.0;
                 }
             }
         }
@@ -404,26 +401,12 @@ impl State {
                 immediate_size: 0,
             });
 
-        let layer_1_pipeline = create_render_pipeline(
+        let render_pipeline = create_render_pipeline(
             &device,
             config.format,
             Some(&render_pipeline_layout),
             Some("vs_main"),
-            Some("fluid_background"),
-        );
-        let layer_2_pipeline = create_render_pipeline(
-            &device,
-            config.format,
-            Some(&render_pipeline_layout),
-            Some("vs_main"),
-            Some("magnetic_field_lines"),
-        );
-        let layer_3_pipeline = create_render_pipeline(
-            &device,
-            config.format,
-            Some(&render_pipeline_layout),
-            Some("vs_main"),
-            Some("interaction_density_glow"),
+            Some("fs_main"),
         );
 
         let bind_group_reading_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -457,9 +440,7 @@ impl State {
         });
 
         let render = RenderResources {
-            layer_1_pipeline,
-            layer_2_pipeline,
-            layer_3_pipeline,
+            render_pipeline,
             bind_group_reading_a,
             bind_group_reading_b,
         };
@@ -648,15 +629,7 @@ impl State {
                 &self.render.bind_group_reading_b
             };
 
-            rpass.set_pipeline(&self.render.layer_1_pipeline);
-            rpass.set_bind_group(0, bind_group, &[]);
-            rpass.draw(0..3, 0..1);
-
-            rpass.set_pipeline(&self.render.layer_2_pipeline);
-            rpass.set_bind_group(0, bind_group, &[]);
-            rpass.draw(0..3, 0..1);
-
-            rpass.set_pipeline(&self.render.layer_3_pipeline);
+            rpass.set_pipeline(&self.render.render_pipeline);
             rpass.set_bind_group(0, bind_group, &[]);
             rpass.draw(0..3, 0..1);
         }
