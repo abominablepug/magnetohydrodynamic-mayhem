@@ -368,7 +368,12 @@ impl State {
             active_rows,
         };
 
-        let render_pipeline = create_render_pipeline(&device, config.format);
+        let render_pipeline = create_render_pipeline(
+            &device,
+            config.format,
+            Some("vs_main"),
+            Some("fluid_background"),
+        );
         let render_layout = render_pipeline.get_bind_group_layout(0);
 
         let bind_group_reading_a = device.create_bind_group(&wgpu::BindGroupDescriptor {

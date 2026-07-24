@@ -114,13 +114,28 @@ fn fluid_background(input: VertexOutput) -> @location(0) vec4<f32> {
 
     let index = row * sim_params.active_cols + col;
     let cell = grid[index];
-    let velocity_magnitude = length(vec2<f32>(cell.u, cell.v));
+    let delta = f32(sim_params.cell_size);
 
-    let color = vec3<f32>(
-        abs(cell.bx) * 10.0,
-        velocity_magnitude * 0.1,
-        abs(cell.by) * 10.0
-    );
+    // velocity curl
+
+    var x = f32(col) * delta;
+    var y = (f32(row) + 0.5) * delta;
+
+    let v_left = bilinear_interpolation_v(x, y);
+    x += delta;
+    let v_right = bilinear_interpolation_v(x, y);
+
+    x = (f32(col) + 0.5) * delta;
+    y = f32(row) * delta;
+
+    let u_down = bilinear_interpolation_u(x, y);
+    y += delta;
+    let u_up = bilinear_interpolation_u(x, y);
+
+    let curl = (v_right - v_left) / delta - (u_up - u_down) / delta;
+
+    // color based on curl (dark blue palette)
+    let color = vec3<f32>(0.0, 0.0, 0.2) + vec3<f32>(0.0, 0.0, 0.4) * clamp(curl * 10.0, -1.0, 1.0);
 
     return vec4<f32>(color, 1.0);
 }
