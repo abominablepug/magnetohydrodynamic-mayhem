@@ -226,6 +226,22 @@ fn magnetic_field_lines(input: VertexOutput) -> @location(0) vec4<f32> {
 
 @fragment
 fn interaction_density_glow(input: VertexOutput) -> @location(0) vec4<f32> {
-    let color = vec3<f32>(0.0, 0.0, 0.0);
-    return vec4<f32>(color, 0.0);
+    let col = clamp(u32(input.uv.x * f32(sim_params.active_cols)), 0u, sim_params.active_cols - 1u);
+    let row = clamp(u32(input.uv.y * f32(sim_params.active_rows)), 0u, sim_params.active_rows - 1u);
+
+    let index = row * sim_params.active_cols + col;
+    let cell = grid[index];
+
+    // current glow
+    let tension_glow = vec3<f32>(0.9, 0.95, 1.0);
+
+    let max_current: f32 = 1.0;
+
+    let normalized_j = saturate(abs(cell.current_density) / max_current);
+
+    let t_snap = pow(normalized_j, 2.0);
+
+    let color = tension_glow * t_snap;
+
+    return vec4<f32>(color, t_snap);
 }
