@@ -187,7 +187,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let alpha_length = 1.0 - smoothstep(line_length_half - edge_softness, line_length_half + edge_softness, abs(proj_length));
     let shape_alpha = alpha_thickness * alpha_length;
 
-    let max_b = 50.0;
+    let max_b = 10.0;
     let intensity = smoothstep(0.0, max_b, b_magnitude);
 
     // royal purple accent

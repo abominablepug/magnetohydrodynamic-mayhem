@@ -63,10 +63,10 @@ fn bilinear_interpolation_u(x: f32, y: f32) -> f32 {
     let tx = prep.z;
     let ty = prep.w;
 
-    let u00 = grid_in[get_cell_index(row, col)].u;
-    let u10 = grid_in[get_cell_index(row, col + 1)].u;
-    let u01 = grid_in[get_cell_index(row + 1, col)].u;
-    let u11 = grid_in[get_cell_index(row + 1, col + 1)].u;
+    let u00 = get_u(row, col);
+    let u10 = get_u(row, col + 1);
+    let u01 = get_u(row + 1, col);
+    let u11 = get_u(row + 1, col + 1);
 
     let mix_bottom = mix(u00, u10, tx);
     let mix_top = mix(u01, u11, tx);
@@ -80,10 +80,10 @@ fn bilinear_interpolation_v(x: f32, y: f32) -> f32 {
     let tx = prep.z;
     let ty = prep.w;
 
-    let v00 = grid_in[get_cell_index(row, col)].v;
-    let v10 = grid_in[get_cell_index(row, col + 1)].v;
-    let v01 = grid_in[get_cell_index(row + 1, col)].v;
-    let v11 = grid_in[get_cell_index(row + 1, col + 1)].v;
+    let v00 = get_v(row, col);
+    let v10 = get_v(row, col + 1);
+    let v01 = get_v(row + 1, col);
+    let v11 = get_v(row + 1, col + 1);
 
     let mix_bottom = mix(v00, v10, tx);
     let mix_top = mix(v01, v11, tx);
@@ -97,10 +97,10 @@ fn bilinear_interpolation_bx(x: f32, y: f32) -> f32 {
     let tx = prep.z;
     let ty = prep.w;
 
-    let bx00 = grid_in[get_cell_index(row, col)].bx;
-    let bx10 = grid_in[get_cell_index(row, col + 1)].bx;
-    let bx01 = grid_in[get_cell_index(row + 1, col)].bx;
-    let bx11 = grid_in[get_cell_index(row + 1, col + 1)].bx;
+    let bx00 = get_bx(row, col);
+    let bx10 = get_bx(row, col + 1);
+    let bx01 = get_bx(row + 1, col);
+    let bx11 = get_bx(row + 1, col + 1);
 
     let mix_bottom = mix(bx00, bx10, tx);
     let mix_top = mix(bx01, bx11, tx);
@@ -114,14 +114,70 @@ fn bilinear_interpolation_by(x: f32, y: f32) -> f32 {
     let tx = prep.z;
     let ty = prep.w;
 
-    let by00 = grid_in[get_cell_index(row, col)].by;
-    let by10 = grid_in[get_cell_index(row, col + 1)].by;
-    let by01 = grid_in[get_cell_index(row + 1, col)].by;
-    let by11 = grid_in[get_cell_index(row + 1, col + 1)].by;
+    let by00 = get_by(row, col);
+    let by10 = get_by(row, col + 1);
+    let by01 = get_by(row + 1, col);
+    let by11 = get_by(row + 1, col + 1);
 
     let mix_bottom = mix(by00, by10, tx);
     let mix_top = mix(by01, by11, tx);
     return mix(mix_bottom, mix_top, ty);
+}
+
+fn get_u(row: i32, col: i32) -> f32 {
+    if col <= 0 || col >= i32(sim_params.active_cols) {
+        return 0.0;
+    }
+
+    if row < 0 {
+        return -grid_in[get_cell_index(0, col)].u;
+    } else if row >= i32(sim_params.active_rows) {
+        return -grid_in[get_cell_index(i32(sim_params.active_rows - 1), col)].u;
+    }
+
+    return grid_in[get_cell_index(row, col)].u;
+}
+
+fn get_v(row: i32, col: i32) -> f32 {
+    if row <= 0 || row >= i32(sim_params.active_rows) {
+        return 0.0;
+    }
+
+    if col < 0 {
+        return -grid_in[get_cell_index(row, 0)].v;
+    } else if col >= i32(sim_params.active_cols) {
+        return -grid_in[get_cell_index(row, i32(sim_params.active_cols - 1))].v;
+    }
+
+    return grid_in[get_cell_index(row, col)].v;
+}
+
+fn get_bx(row: i32, col: i32) -> f32 {
+    if col <= 0 || col >= i32(sim_params.active_cols) {
+        return 0.0;
+    }
+
+    if row < 0 {
+        return grid_in[get_cell_index(0, col)].bx;
+    } else if row >= i32(sim_params.active_rows) {
+        return grid_in[get_cell_index(i32(sim_params.active_rows - 1), col)].bx;
+    }
+
+    return grid_in[get_cell_index(row, col)].bx;
+}
+
+fn get_by(row: i32, col: i32) -> f32 {
+    if row <= 0 || row >= i32(sim_params.active_rows) {
+        return 0.0;
+    }
+
+    if col < 0 {
+        return grid_in[get_cell_index(row, 0)].by;
+    } else if col >= i32(sim_params.active_cols) {
+        return grid_in[get_cell_index(row, i32(sim_params.active_cols - 1))].by;
+    }
+
+    return grid_in[get_cell_index(row, col)].by;
 }
 
 @compute
@@ -180,18 +236,15 @@ fn fluid_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(y, x);
     var cell = grid_in[index];
-    var u_right = grid_in[get_cell_index(y, x + 1)].u;
-    var v_up = grid_in[get_cell_index(y + 1, x)].v;
 
-    if x == i32(sim_params.active_cols - 1) {
-        u_right = 0.0;
-    }
-    if y == i32(sim_params.active_rows - 1) {
-        v_up = 0.0;
-    }
+    let u_left = cell.u;
+    let u_right = get_u(y, x + 1);
 
-    let div_u = (u_right - cell.u) / delta;
-    let div_v = (v_up - cell.v) / delta;
+    let v_down = cell.v;
+    var v_up = get_v(y + 1, x);
+
+    let div_u = (u_right - u_left) / delta;
+    let div_v = (v_up - v_down) / delta;
 
     cell.fluid_divergence = div_u + div_v;
 
@@ -276,12 +329,17 @@ fn magnetic_induction_step(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
 
+    let x = i32(col);
+    let y = i32(row);
     let index = get_cell_index(i32(row), i32(col));
     var cell = grid_in[index];
-    let cell_right = grid_in[get_cell_index(i32(row), i32(col + 1))];
-    let cell_up = grid_in[get_cell_index(i32(row + 1), i32(col))];
     let delta = f32(sim_params.cell_size);
     let dt = sim_params.dt;
+
+    let u_right = get_u(y, x + 1);
+    let u_up = get_u(y + 1, x);
+    let v_right = get_v(y, x + 1);
+    var v_up = get_v(y + 1, x);
 
     // stretching term x-component
 
@@ -291,8 +349,8 @@ fn magnetic_induction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     var local_bx = cell.bx;
     var local_by = bilinear_interpolation_by(bx_x, bx_y);
 
-    let du_dx = (cell_right.u - cell.u) / delta;
-    let du_dy = (cell_up.u - cell.u) / delta;
+    let du_dx = (u_right - cell.u) / delta;
+    let du_dy = (u_up - cell.u) / delta;
 
     let b_stretch_x = (local_bx * du_dx + local_by * du_dy) * dt;
 
@@ -314,8 +372,8 @@ fn magnetic_induction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     local_bx = bilinear_interpolation_bx(by_x, by_y);
     local_by = cell.by;
 
-    let dv_dx = (cell_right.v - cell.v) / delta;
-    let dv_dy = (cell_up.v - cell.v) / delta;
+    let dv_dx = (v_right - cell.v) / delta;
+    let dv_dy = (v_up - cell.v) / delta;
 
     let b_stretch_y = (local_bx * dv_dx + local_by * dv_dy) * dt;
 
@@ -348,18 +406,15 @@ fn magnetic_divergence_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let index = get_cell_index(y, x);
     var cell = grid_in[index];
-    var bx_right = grid_in[get_cell_index(y, x + 1)].bx;
-    var by_up = grid_in[get_cell_index(y + 1, x)].by;
 
-    if x == i32(sim_params.active_cols - 1) {
-        bx_right = 0.0;
-    }
-    if y == i32(sim_params.active_rows - 1) {
-        by_up = 0.0;
-    }
+    let bx_left = cell.bx;
+    var bx_right = get_bx(y, x + 1);
 
-    let div_bx = (bx_right - cell.bx) / delta;
-    let div_by = (by_up - cell.by) / delta;
+    let by_down = cell.by;
+    let by_up = get_by(y + 1, x);
+
+    let div_bx = (bx_right - bx_left) / delta;
+    let div_by = (by_up - by_down) / delta;
 
     cell.magnetic_divergence = div_bx + div_by;
 
