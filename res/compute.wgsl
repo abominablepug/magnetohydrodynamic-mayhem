@@ -619,17 +619,17 @@ fn user_interaction_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let dx = cell_x - sim_params.mouse_x;
     let dy = cell_y - sim_params.mouse_y;
-    let dist = sqrt(dx * dx + dy * dy);
+    let dist = max(sqrt(dx * dx + dy * dy), 0.0001);
 
     if sim_params.mouse_left_clicked == 1u && dist < 30.0 {
         let force = 50.0 * (1.0 - dist / 30.0);
         cell.u += force;
 
-        cell.dye += 10.0 * (1.0 - dist / 30.0);
+        cell.dye += 30.0 * (1.0 - dist / 30.0);
     }
 
     if sim_params.mouse_right_clicked == 1u && dist < 50.0 {
-        let b_force = 10.0 * (1.0 - dist / 50.0);
+        let b_force = 50.0 * (1.0 - dist / 50.0);
         cell.by += b_force;
     }
 
