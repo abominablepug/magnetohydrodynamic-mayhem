@@ -31,7 +31,8 @@ struct Cell {
     phi: f32,
     magnetic_divergence: f32,
     current_density: f32,
-    _padding: [f32; 3],
+    dye: f32,
+    _padding: [f32; 2],
 }
 
 #[repr(C)]
@@ -159,7 +160,8 @@ impl State {
                 phi: 0.0,
                 magnetic_divergence: 0.0,
                 current_density: 0.0,
-                _padding: [0.0; 3],
+                dye: 0.0,
+                _padding: [0.0; 2],
             };
             (active_cols * active_rows) as usize
         ];

@@ -22,7 +22,8 @@ struct Cell {
     phi: f32,
     magnetic_divergence: f32,
     current_density: f32,
-    _padding: array<f32, 3>,
+    dye: f32,
+    _padding: array<f32, 2>,
 }
 
 struct Particle {
@@ -131,6 +132,23 @@ fn bilinear_interpolation_by(x: f32, y: f32) -> f32 {
     return mix(mix_bottom, mix_top, ty);
 }
 
+fn bilinear_interpolation_dye(x: f32, y: f32) -> f32 {
+    let prep = bilinear_prep(x, y, false);
+    let row = i32(prep.x);
+    let col = i32(prep.y);
+    let tx = prep.z;
+    let ty = prep.w;
+
+    let dye00 = grid_in[get_cell_index(row, col)].dye;
+    let dye10 = grid_in[get_cell_index(row, col + 1)].dye;
+    let dye01 = grid_in[get_cell_index(row + 1, col)].dye;
+    let dye11 = grid_in[get_cell_index(row + 1, col + 1)].dye;
+
+    let mix_bottom = mix(dye00, dye10, tx);
+    let mix_top = mix(dye01, dye11, tx);
+    return mix(mix_bottom, mix_top, ty);
+}
+
 fn get_u(row: i32, col: i32) -> f32 {
     if col <= 0 || col >= i32(sim_params.active_cols) {
         return 0.0;
@@ -223,6 +241,19 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let v_old_y = v_y - local_v * dt;
 
     cell.v = bilinear_interpolation_v(v_old_x, v_old_y);
+
+    let speed_mult = 50.0;
+
+    let center_x = (f32(col) + 0.5) * delta;
+    let center_y = (f32(row) + 0.5) * delta;
+
+    let center_u = bilinear_interpolation_u(center_x, center_y);
+    let center_v = bilinear_interpolation_v(center_x, center_y);
+
+    let dye_old_x = center_x - center_u * dt * speed_mult;
+    let dye_old_y = center_y - center_v * dt * speed_mult;
+
+    cell.dye = bilinear_interpolation_dye(dye_old_x, dye_old_y) * 0.9999;
 
     grid_out[index] = cell;
 }
@@ -593,6 +624,8 @@ fn user_interaction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     if sim_params.mouse_left_clicked == 1u && dist < 30.0 {
         let force = 50.0 * (1.0 - dist / 30.0);
         cell.u += force;
+
+        cell.dye += 10.0 * (1.0 - dist / 30.0);
     }
 
     if sim_params.mouse_right_clicked == 1u && dist < 50.0 {

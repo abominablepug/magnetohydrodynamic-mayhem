@@ -22,7 +22,8 @@ struct Cell {
     phi: f32,
     magnetic_divergence: f32,
     current_density: f32,
-    _padding: array<f32, 3>,
+    dye: f32,
+    _padding: array<f32, 2>,
 }
 
 @group(0) @binding(0) var<uniform> sim_params: SimParams;
@@ -164,6 +165,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // color based on curl (dark blue palette)
     let bg_color = vec3<f32>(0.0, 0.0, 0.15) + vec3<f32>(0.0, 0.0, 0.3) * clamp(curl * 10.0, -1.0, 1.0);
 
+    let dye_amount = saturate(cell.dye / 50.0);
+    let dye_color = mix(
+        vec3<f32>(0.0, 0.0, 0.0),
+        vec3<f32>(0.0, 0.8, 1.0),
+        dye_amount
+    );
+
     let center_x = (f32(col) + 0.5) * delta;
     let center_y = (f32(row) + 0.5) * delta;
 
@@ -204,7 +212,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let t_snap = pow(normalized_j, 2.0);
     let glow_color = tension_glow * t_snap;
 
-    var final_color = mix(bg_color, line_color, line_alpha);
+    var final_color = bg_color + dye_color;
+    final_color = mix(final_color, line_color, line_alpha);
     final_color += glow_color;
 
     return vec4<f32>(final_color, 1.0);
@@ -226,7 +235,7 @@ fn vs_particle(
         vec2<f32>(1.0, 1.0),
     );
     let p = pos[vertex_index];
-    let particleSize = 1.5;
+    let particleSize = 2.0;
 
     let screenWidth = f32(sim_params.active_cols * sim_params.cell_size);
     let screenHeight = f32(sim_params.active_rows * sim_params.cell_size);
