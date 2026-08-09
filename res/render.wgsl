@@ -209,3 +209,47 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4<f32>(final_color, 1.0);
 }
+
+struct ParticleInput {
+    @location(0) pos_pad: vec4<f32>,
+}
+
+@vertex
+fn vs_particle(
+    @builtin(vertex_index) vertex_index: u32,
+    instance: ParticleInput,
+) -> VertexOutput {
+    var pos = array<vec2<f32>, 4>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, 1.0),
+    );
+    let p = pos[vertex_index];
+    let particleSize = 1.5;
+
+    let screenWidth = f32(sim_params.active_cols * sim_params.cell_size);
+    let screenHeight = f32(sim_params.active_rows * sim_params.cell_size);
+
+    let pixelX = instance.pos_pad.x + p.x * particleSize;
+    let pixelY = instance.pos_pad.y + p.y * particleSize;
+
+    let clipX = (pixelX / screenWidth) * 2.0 - 1.0;
+    let clipY = 1.0 - (pixelY / screenHeight) * 2.0;
+
+    var out: VertexOutput;
+    out.clip_position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    out.uv = p;
+    return out;
+}
+
+@fragment
+fn fs_particle(input: VertexOutput) -> @location(0) vec4<f32> {
+    let dist = length(input.uv);
+    if dist > 1.0 {
+        discard;
+    }
+
+    let alpha = (1.0 - dist) * 0.8;
+    return vec4<f32>(0.2, 0.8, 1.0, alpha);
+}

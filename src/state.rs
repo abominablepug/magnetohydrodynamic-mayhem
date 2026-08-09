@@ -34,6 +34,14 @@ struct Cell {
     _padding: [f32; 3],
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Particle {
+    x: f32,
+    y: f32,
+    _padding: [f32; 2],
+}
+
 struct ComputeResources {
     interaction_pipeline: wgpu::ComputePipeline,
     advection_pipeline: wgpu::ComputePipeline,
@@ -46,6 +54,7 @@ struct ComputeResources {
     mag_divergence_pipeline: wgpu::ComputePipeline,
     mag_jacobi_pipeline: wgpu::ComputePipeline,
     mag_gradient_pipeline: wgpu::ComputePipeline,
+    particle_pipeline: wgpu::ComputePipeline,
 
     bind_group_a: wgpu::BindGroup,
     bind_group_b: wgpu::BindGroup,
@@ -56,6 +65,7 @@ struct ComputeResources {
 
 struct RenderResources {
     render_pipeline: wgpu::RenderPipeline,
+    particle_render_pipeline: wgpu::RenderPipeline,
     bind_group_reading_a: wgpu::BindGroup,
     bind_group_reading_b: wgpu::BindGroup,
 }
@@ -71,6 +81,8 @@ pub struct State {
     render: RenderResources,
     current_sim_params: SimParams,
     pub sim_params_buffer: wgpu::Buffer,
+    pub particles_buffer: wgpu::Buffer,
+    pub particle_count: u32,
 }
 
 impl State {
@@ -152,6 +164,28 @@ impl State {
             (active_cols * active_rows) as usize
         ];
 
+        let particle_count = 15000;
+        let mut particles = Vec::with_capacity(particle_count as usize);
+
+        let mut seed = 1512u32;
+        for _ in 0..particle_count {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            let rand_x = (seed as f32) / (u32::MAX as f32);
+
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            let rand_y = (seed as f32) / (u32::MAX as f32);
+
+            particles.push(Particle {
+                x: rand_x * (active_cols * CELL_SIZE) as f32,
+                y: rand_y * (active_rows * CELL_SIZE) as f32,
+                _padding: [0.0; 2],
+            });
+        }
+
         let center_y = active_rows as f32 / 2.0;
 
         let center_x_left = active_cols as f32 * 0.35;
@@ -218,6 +252,16 @@ impl State {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -313,6 +357,13 @@ impl State {
             Some(&compute_pipeline_layout),
         );
 
+        let particle_pipeline = create_compute_pipeline(
+            &device,
+            Some("Particle Compute Pipeline"),
+            Some("particle_update_step"),
+            Some(&compute_pipeline_layout),
+        );
+
         let sim_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Sim Params Buffer"),
             contents: bytemuck::cast_slice(&[sim_params]),
@@ -331,6 +382,14 @@ impl State {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
+        let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Particle Buffer"),
+            contents: bytemuck::cast_slice(&particles),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::VERTEX,
+        });
+
         let bind_group_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Bind Group A"),
             layout: &compute_bind_group_layout,
@@ -346,6 +405,10 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: grid_out_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: particle_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -366,6 +429,10 @@ impl State {
                     binding: 2,
                     resource: grid_in_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: particle_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -381,6 +448,7 @@ impl State {
             mag_divergence_pipeline,
             mag_jacobi_pipeline,
             mag_gradient_pipeline,
+            particle_pipeline,
 
             bind_group_a,
             bind_group_b,
@@ -395,7 +463,7 @@ impl State {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -431,6 +499,45 @@ impl State {
             Some("fs_main"),
         );
 
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../res/render.wgsl").into()),
+        });
+
+        let particle_render_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Particle Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_particle"),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Particle>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &wgpu::vertex_attr_array![0 => Float32x4],
+                    })],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_particle"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
+
         let bind_group_reading_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group A"),
             layout: &render_bind_layout,
@@ -463,6 +570,7 @@ impl State {
 
         let render = RenderResources {
             render_pipeline,
+            particle_render_pipeline,
             bind_group_reading_a,
             bind_group_reading_b,
         };
@@ -478,6 +586,8 @@ impl State {
             render,
             current_sim_params: sim_params,
             sim_params_buffer,
+            particles_buffer: particle_buffer,
+            particle_count,
         }
     }
 
@@ -568,6 +678,15 @@ impl State {
             &mut is_a,
         );
 
+        compute_pass.set_pipeline(&self.compute.particle_pipeline);
+        let bind_group = if is_a {
+            &self.compute.bind_group_a
+        } else {
+            &self.compute.bind_group_b
+        };
+        compute_pass.set_bind_group(0, bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.particle_count + 63) / 64, 1, 1);
+
         is_a
     }
 
@@ -654,6 +773,10 @@ impl State {
             rpass.set_pipeline(&self.render.render_pipeline);
             rpass.set_bind_group(0, bind_group, &[]);
             rpass.draw(0..3, 0..1);
+
+            rpass.set_pipeline(&self.render.particle_render_pipeline);
+            rpass.set_vertex_buffer(0, self.particles_buffer.slice(..));
+            rpass.draw(0..4, 0..self.particle_count);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

@@ -25,9 +25,16 @@ struct Cell {
     _padding: array<f32, 3>,
 }
 
+struct Particle {
+    x: f32,
+    y: f32,
+    _padding: vec2<f32>,
+}
+
 @group(0) @binding(0) var<uniform> sim_params: SimParams;
 @group(0) @binding(1) var<storage, read> grid_in: array<Cell>;
 @group(0) @binding(2) var<storage, read_write> grid_out: array<Cell>;
+@group(0) @binding(3) var<storage, read_write> particles: array<Particle>;
 
 fn get_cell_index(row: i32, col: i32) -> u32 {
     let c = clamp(col, 0, i32(sim_params.active_cols) - 1);
@@ -594,4 +601,34 @@ fn user_interaction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     grid_out[index] = cell;
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn particle_update_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let particle_index = id.x;
+    if particle_index >= arrayLength(&particles) { return; }
+
+    var particle = particles[particle_index];
+
+    let u = bilinear_interpolation_u(particle.x, particle.y);
+    let v = bilinear_interpolation_v(particle.x, particle.y);
+
+    let speed_mult = 50.0;
+
+    particle.x += u * sim_params.dt * speed_mult;
+    particle.y += v * sim_params.dt * speed_mult;
+
+    if particle.x < 0.0 {
+        particle.x += f32(sim_params.active_cols * sim_params.cell_size);
+    } else if particle.x >= f32(sim_params.active_cols * sim_params.cell_size) {
+        particle.x -= f32(sim_params.active_cols * sim_params.cell_size);
+    }
+
+    if particle.y < 0.0 {
+        particle.y += f32(sim_params.active_rows * sim_params.cell_size);
+    } else if particle.y >= f32(sim_params.active_rows * sim_params.cell_size) {
+        particle.y -= f32(sim_params.active_rows * sim_params.cell_size);
+    }
+
+    particles[particle_index] = particle;
 }
