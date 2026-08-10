@@ -166,7 +166,7 @@ impl State {
             (active_cols * active_rows) as usize
         ];
 
-        let particle_count = 15000;
+        let particle_count = 30000;
         let mut particles = Vec::with_capacity(particle_count as usize);
 
         let mut seed = 1512u32;

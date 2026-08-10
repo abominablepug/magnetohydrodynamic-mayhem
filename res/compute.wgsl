@@ -242,7 +242,7 @@ fn fluid_advection_step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     cell.v = bilinear_interpolation_v(v_old_x, v_old_y);
 
-    let speed_mult = 50.0;
+    let speed_mult = 100.0;
 
     let center_x = (f32(col) + 0.5) * delta;
     let center_y = (f32(row) + 0.5) * delta;
@@ -622,14 +622,14 @@ fn user_interaction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let dist = max(sqrt(dx * dx + dy * dy), 0.0001);
 
     if sim_params.mouse_left_clicked == 1u && dist < 30.0 {
-        let force = 50.0 * (1.0 - dist / 30.0);
+        let force = 100.0 * (1.0 - dist / 30.0);
         cell.u += force;
 
-        cell.dye += 30.0 * (1.0 - dist / 30.0);
+        cell.dye += 60.0 * (1.0 - dist / 30.0);
     }
 
     if sim_params.mouse_right_clicked == 1u && dist < 50.0 {
-        let b_force = 50.0 * (1.0 - dist / 50.0);
+        let b_force = 100.0 * (1.0 - dist / 50.0);
         cell.by += b_force;
     }
 

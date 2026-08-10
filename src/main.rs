@@ -8,7 +8,7 @@ use winit::{
     event::*,
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowId},
+    window::{Fullscreen, Window, WindowId},
 };
 
 struct App {
@@ -19,11 +19,11 @@ struct App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none() {
-            let window = Arc::new(
-                event_loop
-                    .create_window(Window::default_attributes())
-                    .unwrap(),
-            );
+            let window_attributes = Window::default_attributes()
+                .with_title("Magnetohydrodynamic Mayhem")
+                .with_fullscreen(Some(Fullscreen::Borderless(None)));
+
+            let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
             self.window = Some(window.clone());
 
             self.state = Some(pollster::block_on(state::State::new(window)));
