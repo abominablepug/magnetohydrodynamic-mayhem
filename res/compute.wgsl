@@ -622,14 +622,14 @@ fn user_interaction_step(@builtin(global_invocation_id) id: vec3<u32>) {
     let dist = max(sqrt(dx * dx + dy * dy), 0.0001);
 
     if sim_params.mouse_left_clicked == 1u && dist < 30.0 {
-        let force = 100.0 * (1.0 - dist / 30.0);
+        let force = 50.0 * (1.0 - dist / 30.0);
         cell.u += force;
 
-        cell.dye += 60.0 * (1.0 - dist / 30.0);
+        cell.dye += 30.0 * (1.0 - dist / 30.0);
     }
 
     if sim_params.mouse_right_clicked == 1u && dist < 50.0 {
-        let b_force = 100.0 * (1.0 - dist / 50.0);
+        let b_force = 20.0 * (1.0 - dist / 50.0);
         cell.by += b_force;
     }
 
