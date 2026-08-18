@@ -1,22 +1,39 @@
 # Magnetohydrodynamic Mayhem
-The last in a series of simulations, magnetohydrodynamic-mayhem (MHDM for short), is a wgpu-based simulation written fully in Rust. Unlike prior simulations, MHDM is fully self-contained and doesn't use any external software for rendering or caclulations. This makes MHDM both the most technically challenging simulation I've written to date as well as the most in-depth physics-wise. In simple terms, MHDM sets out to simulate the complex world of magnetohydrodynamics (MHD) in a way that is both understandable and thorough.
+The last in a series of simulations, magnetohydrodynamic-mayhem (MHDM for short), is a **wgpu-based simulation** written fully in **Rust and WGSL**. Unlike prior simulations, MHDM is fully self-contained and doesn't use any external software for rendering or caclulations. This makes MHDM both the most technically challenging simulation I've written to date as well as the most in-depth physics-wise. In simple terms, MHDM sets out to **simulate the complex world of magnetohydrodynamics** (MHD) in a way that is both understandable and thorough.
 
 ## What is Magnetohydrodynamics?
-Magnetohydrodyanmics (MHD) is a field of physics concerned with the behavior of magnetic fluids, as the name suggests. Swirling vortexes of magnetic fields interfere with fluid motion creating the chaotic and sharp movements of MHD substances. It's use can be most often found when predicting and simulating plasma, liquid metals, and, under certain conditions, salt water.
+Magnetohydrodyanmics (MHD) is a field of physics concerned with the **behavior of magnetic fluids**, as the name suggests. Swirling vortexes of magnetic fields interfere with fluid motion creating the chaotic and sharp movements of MHD substances. It's use can be most often found when predicting and simulating plasma, liquid metals, and, under certain conditions, salt water.
 
 ## The Simulated Mayhem
-When creating any simulation, balancing clarity and depth is of utmost importance. In order to calibrate these factors, I decided to create my own render and compute pipelines in wgpu, giving me control over the entire process. Fundamentally the program is built on a staggered grid that uses the marker-and-cell (MAC) method to efficiently track movement and cell properties. The best way to analyze the program is to go through each individual dispatch step-by-step to get a full-picture of what MHDM is doing under the hood:
-* **Interaction Pipeline** - The Interaction Pipeline is the first pipeline executed. The pipeline takes in mouse information to determine where and by how much fluid velocity and magnetic field should be increased. This step allows the user to interact directly with the program and test the motion of MHD under various conditions.
-* **Fluid Advection Pipeline** - The Fluid Advection Pipeline updates MAC cell values using the advection of the fluid. To do this, the program bilinearly interpolates the staggered velocities to find where the fluid came from on the last step to update the current cell to those values on the current step. However, this results in a violation of the incompressibility of the fluid which has to be fixed later.
-* **Magentic Induction Pipeline** - The Magnetic Induction Pipeline is similar to the Fluid Advection Pipeline. Using bilinear interpolation at the staggered edges of the cell, the step calculates the magnetic field of the cell based on where the MHD substance came from. This, however, also leads to error as the magnetic field must be divergence free meaning it too has to be fixed later.
-* **Current Density Pipeline** - The Magnetic Current Pipeline is used to calculate the current density found in each cell. This is calculated using the same bilinear interpolations of the magnetic fields at their staggered locations and then finding the local gradient of the magnetic field. Though not used immediately it is necessary later for more accurate fluid velocity calculation.
-* **Lorentz Force Pipeline** - The Lorentz Force Pipeline is used to factor in for the lorentz force caused by the magnetic field on the velocity of the fluid. When updating the fluid velocity the momentum Navier-Stokes equation is used, however, it must account for external forces that are also exerted on the fluid. This step serves that purpose by using the now updated magnetic field values to correct the fluid velocity. Note that the magnetic field is still divergent and the fluid is still compressible at this point.
-* **Fluid Divergence Pipeline** - The Fluid Divergence Pipeline calculates the divergence of the fluid within each cell. It does this using the same bilinear interpolation and staggered MAC grid consideration and is then stored within the cell.
-* **Fluid Jacobi Pipeline** - The Fluid Jacobi Pipeline is how we finally converge on creating an incompressible fluid. The Jacobi process averages the pressure gradient around the cell while using the fluid's density and the divergence of the cell to converge on a final pressure value for the individual cell. To do this the shader takes in both a input and output buffer for the cells, the pipeline is then ran 40 separate times while switching which buffer is the input and output tricking wgpu to speed up the process while converging on the final pressure values of the grid.
-* **Fluid Gradient Pipeline** - The Fluid Gradient Pipeline finally solves the incompressibility problem by subtracting the gradient of the pressure from the fluid velocity to return it to an incompressible state.
-* **Magnetic Divergence Pipeline** - The Magnetic Divergence Pipeline mirrors the fluid counterpart but is the magnetic field rather than velocity.
-* **Magnetic Jacobi Pipeline** - The Magnetic Jacobi Step uses the same flip-flop method and Jacobi technique as it's fluid counterpart helping to converge on a magnetic field that does not diverge or create a monopole.
-* **Magnetic Gradient Pipeline** - The Magnetic Gradient Pipeline accounts for the gradient of the electric potential of the MHD fluid to return the magnetic field toa non-diverging state.
-* **Particle Pipeline** - The Particle Pipeline simply updates the position of each particle after the change in velocity calculated.
-* **Render Pipeline** - The Render Pipeline is what captures all this math on the screen. Using each cell's individual values and bilinear interpolation colors are mixed together to create a descriptive picture. Blue is added for the fluid's velocity, purple is added for the magnetic field, gold is added for significant magnetic moments, green is added to represent dye the user can use to picture the movement of the fluid. Weighting all these colors together creates the final simulation that is shown to the user and interactable.
-* **Particle Render Pipeline** - The Particle Render Pipeline captures the movement of the particles on top of the sea of moving current and magnetic fields allowing the user to see how they're interactions are effecting individual particles within the MHD substance.
+Simulating the intricacies of, not only an **incompressible fluid**, but **a magnetic one** can't be understated. In fact, when creating any computer simulation, it's important to find that perfect balance between accuracy, performance, and clarity. Accuracy comes first and foremost as, "premature optimization is the root of all evil" (Donald Knuth), so I began with writing the compute pipelines that'd become the backbone of the entire simulation. The simulation is built on a **2D staggered MAC (Marker-and-Cell) grid** which stores the magnetic field vector, velocity vector, and pressure within each cell. **MAC grids** are exceptional at tracking the movements of fluids making them the clear choice while the **staggered design** while using **bilinear interpolation** allows for fine-combed precision that prevents computational drift. By using a **Semi-Lagrangian scheme** to update cells, cell velocities and magnetic fields are updated each step. However, this also introduces computational drift as the simulation has to ensure that both the **fluid velocities** and **magnetic fields** remain **divergence-free** since the fluid is incompressible and monopoles can't exist. This is done using a **repeated Jacobi step** with a **Ping-Pong scheme** which flips the input and output buffer repeatedly to improve performance while approaching the divergence-free values. These steps are then repeated for each frame building the mathematical basis for the simulation.
+
+## Beauty in Chaos
+It's important to not lose the forest for the trees. At the end of the day, simulations should be educational and, maybe even, fun which is why the best ones include visuals and controls. MHDM is no different, allowing the user to visualize the **fluid velocity** (blue), **magnetic field** (purple), **magnetic moments** (gold), **particles** (cyan), and **fluid movement/dye** (green). While it can be overwhelming at first I found that, after tinkering, it was effectively able to explain the movement of particles and dyes throughout the simulation. The LMB and RMB can also be used to **introduce noise** into the simulation which let the user test out more interactions and become a **captain of the magnetohydrodynamic seas**. All this to say that MHDM provides the user with visuals and controls to get involved and learn about the world of MHD.
+
+## Formulas
+At its core, magnetohydrodynamics combines the field of **hydrodynamics** with **electromagnetism**. By combining the **Navier-Stokes equations** from fluid dynamics with **Maxwell's equations of electromagnetism**, MHD has some interesting formulas that were required for this project:
+<br>
+
+$$
+\frac{∂u}{∂t} + (u \cdot ∇)u = -\frac1p∇p + \frac1p(J \times B)
+$$
+
+$$
+\frac{∂B}{∂t} = ∇ \times (u \times B) = (B \cdot ∇)u - (u \cdot ∇)B
+$$
+
+$$
+J = ∇ \times B
+$$
+
+$$
+∇ \cdot u = 0
+$$
+
+$$
+∇ \cdot B = 0
+$$
+
+The first equation is the **Navier-Stokes momentum equation** with an added **lorentz force term** to account for the magnetic field. Overall, it includes the **advection term** $(u \cdot ∇)u$, the **pressure gradient** $-\frac1p∇p$, and the **lorentz force term** $\frac1p(J \times B)$. Each part of this equation had to be solved in separate pipelines to ensure the accurate movement of the fluid. The second equation is **Induction Equation** including both the **magnetic stretching term** $(B \cdot ∇)u$ and the **magnetic advection term** $(u \cdot ∇)B$. This equation is essential to updating the magnetic field each step with both terms being solved in sequence. The third equation solves for the **charge density** at a point in the grid and was used to solve for the **lorentz force**. The last two equations mathematically symbolize that both the fluid velocity and magnetic field can not diverge.
+
+## Results
