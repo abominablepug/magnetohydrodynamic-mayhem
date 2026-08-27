@@ -1,4 +1,5 @@
 pub const CELL_SIZE: u32 = 4;
+pub const PARTICLE_COUNT: u32 = 30000;
 
 pub const DT: f32 = 0.01;
 pub const FLUID_DENSITY: f32 = 1.0;

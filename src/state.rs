@@ -1,4 +1,4 @@
-use crate::config::{CELL_SIZE, DT, FLUID_DENSITY, VISCOSITY};
+use crate::config::{CELL_SIZE, DT, FLUID_DENSITY, PARTICLE_COUNT, VISCOSITY};
 use crate::pipeline::*;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -43,6 +43,89 @@ struct Particle {
     _padding: [f32; 2],
 }
 
+fn generate_initial_data(active_cols: u32, active_rows: u32) -> (Vec<Cell>, Vec<Particle>) {
+    let mut grid = vec![
+        Cell {
+            u: 0.0,
+            v: 0.0,
+            bx: 0.0,
+            by: 0.0,
+            p: 1.0,
+            fluid_divergence: 0.0,
+            phi: 0.0,
+            magnetic_divergence: 0.0,
+            current_density: 0.0,
+            dye: 0.0,
+            _padding: [0.0; 2],
+        };
+        (active_cols * active_rows) as usize
+    ];
+
+    let particle_count = PARTICLE_COUNT;
+    let mut particles = Vec::with_capacity(particle_count as usize);
+
+    let mut seed = 1512u32;
+    for _ in 0..particle_count {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        let rand_x = (seed as f32) / (u32::MAX as f32);
+
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        let rand_y = (seed as f32) / (u32::MAX as f32);
+
+        particles.push(Particle {
+            x: rand_x * (active_cols * CELL_SIZE) as f32,
+            y: rand_y * (active_rows * CELL_SIZE) as f32,
+            _padding: [0.0; 2],
+        });
+    }
+
+    let center_y = active_rows as f32 / 2.0;
+
+    let center_x_left = active_cols as f32 * 0.35;
+    let center_x_right = active_cols as f32 * 0.65;
+
+    let vortex_radius = 35.0;
+    let vortex_strength = 150.0;
+
+    for row in 0..active_rows {
+        for col in 0..active_cols {
+            let index = (row * active_cols + col) as usize;
+
+            grid[index].bx = 50.0;
+            grid[index].by = 0.0;
+
+            let dx_left = col as f32 - center_x_left;
+            let dy_left = row as f32 - center_y;
+            let dist_left = (dx_left * dx_left + dy_left * dy_left).sqrt();
+
+            let dx_right = col as f32 - center_x_right;
+            let dy_right = row as f32 - center_y;
+            let dist_right = (dx_right * dx_right + dy_right * dy_right).sqrt();
+
+            grid[index].u = 0.0;
+            grid[index].v = 0.0;
+
+            if dist_left < vortex_radius && dist_left > 1.0 {
+                let falloff = 1.0 - (dist_left / vortex_radius);
+                grid[index].u += (-dy_left / dist_left) * vortex_strength * falloff;
+                grid[index].v += (dx_left / dist_left) * vortex_strength * falloff;
+            }
+
+            if dist_right < vortex_radius && dist_right > 1.0 {
+                let falloff = 1.0 - (dist_right / vortex_radius);
+                grid[index].u += (dy_right / dist_right) * vortex_strength * falloff;
+                grid[index].v += (-dx_right / dist_right) * vortex_strength * falloff;
+            }
+        }
+    }
+
+    (grid, particles)
+}
+
 struct ComputeResources {
     interaction_pipeline: wgpu::ComputePipeline,
     advection_pipeline: wgpu::ComputePipeline,
@@ -83,12 +166,17 @@ pub struct State {
     current_sim_params: SimParams,
     pub sim_params_buffer: wgpu::Buffer,
     pub particles_buffer: wgpu::Buffer,
-    pub particle_count: u32,
+    pub grid_buffer_a: wgpu::Buffer,
+    pub grid_buffer_b: wgpu::Buffer,
+    pub is_a: bool,
 }
 
 impl State {
     pub async fn new(window: Arc<winit::window::Window>) -> Self {
-        let size = window.inner_size();
+        let mut size = window.inner_size();
+        if size.width == 0 || size.height == 0 {
+            size = winit::dpi::PhysicalSize::new(800, 450);
+        }
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -149,84 +237,8 @@ impl State {
             _padding: [0; 2],
         };
 
-        let mut grid = vec![
-            Cell {
-                u: 0.0,
-                v: 0.0,
-                bx: 0.0,
-                by: 0.0,
-                p: 1.0,
-                fluid_divergence: 0.0,
-                phi: 0.0,
-                magnetic_divergence: 0.0,
-                current_density: 0.0,
-                dye: 0.0,
-                _padding: [0.0; 2],
-            };
-            (active_cols * active_rows) as usize
-        ];
+        let (grid, particles) = generate_initial_data(active_cols, active_rows);
 
-        let particle_count = 30000;
-        let mut particles = Vec::with_capacity(particle_count as usize);
-
-        let mut seed = 1512u32;
-        for _ in 0..particle_count {
-            seed ^= seed << 13;
-            seed ^= seed >> 17;
-            seed ^= seed << 5;
-            let rand_x = (seed as f32) / (u32::MAX as f32);
-
-            seed ^= seed << 13;
-            seed ^= seed >> 17;
-            seed ^= seed << 5;
-            let rand_y = (seed as f32) / (u32::MAX as f32);
-
-            particles.push(Particle {
-                x: rand_x * (active_cols * CELL_SIZE) as f32,
-                y: rand_y * (active_rows * CELL_SIZE) as f32,
-                _padding: [0.0; 2],
-            });
-        }
-
-        let center_y = active_rows as f32 / 2.0;
-
-        let center_x_left = active_cols as f32 * 0.35;
-        let center_x_right = active_cols as f32 * 0.65;
-
-        let vortex_radius = 35.0;
-        let vortex_strength = 150.0;
-
-        for row in 0..active_rows {
-            for col in 0..active_cols {
-                let index = (row * active_cols + col) as usize;
-
-                grid[index].bx = 50.0;
-                grid[index].by = 0.0;
-
-                let dx_left = col as f32 - center_x_left;
-                let dy_left = row as f32 - center_y;
-                let dist_left = (dx_left * dx_left + dy_left * dy_left).sqrt();
-
-                let dx_right = col as f32 - center_x_right;
-                let dy_right = row as f32 - center_y;
-                let dist_right = (dx_right * dx_right + dy_right * dy_right).sqrt();
-
-                grid[index].u = 0.0;
-                grid[index].v = 0.0;
-
-                if dist_left < vortex_radius && dist_left > 1.0 {
-                    let falloff = 1.0 - (dist_left / vortex_radius);
-                    grid[index].u += (-dy_left / dist_left) * vortex_strength * falloff;
-                    grid[index].v += (dx_left / dist_left) * vortex_strength * falloff;
-                }
-
-                if dist_right < vortex_radius && dist_right > 1.0 {
-                    let falloff = 1.0 - (dist_right / vortex_radius);
-                    grid[index].u += (dy_right / dist_right) * vortex_strength * falloff;
-                    grid[index].v += (-dx_right / dist_right) * vortex_strength * falloff;
-                }
-            }
-        }
 
         let compute_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -375,13 +387,13 @@ impl State {
         let grid_in_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Grid Buffer"),
             contents: bytemuck::cast_slice(&grid),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
         });
 
         let grid_out_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Grid Buffer"),
             contents: bytemuck::cast_slice(&grid),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
         });
 
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -589,7 +601,9 @@ impl State {
             current_sim_params: sim_params,
             sim_params_buffer,
             particles_buffer: particle_buffer,
-            particle_count,
+            grid_buffer_a: grid_in_buffer,
+            grid_buffer_b: grid_out_buffer,
+            is_a: true,
         }
     }
 
@@ -608,7 +622,7 @@ impl State {
         let workgroups_x = (self.compute.active_cols + 7) / 8;
         let workgroups_y = (self.compute.active_rows + 7) / 8;
 
-        let mut is_a = true;
+        let mut is_a = self.is_a;
 
         let mut dispatch = |compute_pass: &mut wgpu::ComputePass,
                             pipeline: &wgpu::ComputePipeline,
@@ -687,8 +701,9 @@ impl State {
             &self.compute.bind_group_b
         };
         compute_pass.set_bind_group(0, bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.particle_count + 63) / 64, 1, 1);
+        compute_pass.dispatch_workgroups((PARTICLE_COUNT + 63) / 64, 1, 1);
 
+        self.is_a = is_a;
         is_a
     }
 
@@ -716,7 +731,7 @@ impl State {
         }
     }
 
-    pub fn render(&mut self) -> anyhow::Result<()> {
+    pub fn render(&mut self, paused: bool) -> anyhow::Result<()> {
         let output = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
             wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => surface_texture,
@@ -741,7 +756,11 @@ impl State {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let final_buffer_b = self.update(&mut encoder);
+        let final_buffer_b = if !paused {
+            self.update(&mut encoder)
+        } else {
+            false
+        };
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -778,12 +797,24 @@ impl State {
 
             rpass.set_pipeline(&self.render.particle_render_pipeline);
             rpass.set_vertex_buffer(0, self.particles_buffer.slice(..));
-            rpass.draw(0..4, 0..self.particle_count);
+            rpass.draw(0..4, 0..PARTICLE_COUNT);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
 
         Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        let (grid, particles) =
+            generate_initial_data(self.compute.active_cols, self.compute.active_rows);
+
+        self.queue
+            .write_buffer(&self.grid_buffer_a, 0, bytemuck::cast_slice(&grid));
+        self.queue
+            .write_buffer(&self.grid_buffer_b, 0, bytemuck::cast_slice(&grid));
+        self.queue
+            .write_buffer(&self.particles_buffer, 0, bytemuck::cast_slice(&particles));
     }
 }
